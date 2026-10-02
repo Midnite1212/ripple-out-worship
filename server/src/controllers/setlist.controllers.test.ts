@@ -84,10 +84,8 @@ describe('setlist songKeys helpers', () => {
       }
     });
 
-    it('accepts any 12-character string as a songId', () => {
-      assert.deepEqual(parseSongKeys([{ key: 'C', songId: 'aaaaaaaaaaaa' }]), [
-        { key: 'C', songId: 'aaaaaaaaaaaa' },
-      ]);
+    it('rejects 12-character songIds that Mongoose would accept', () => {
+      assert.equal(parseSongKeys([{ key: 'C', songId: 'aaaaaaaaaaaa' }]), null);
     });
   });
 

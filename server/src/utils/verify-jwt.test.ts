@@ -43,12 +43,22 @@ describe('verifyToken', () => {
     });
   });
 
-  it('does not check the id format or the accessType value', () => {
-    assert.deepEqual(verifyToken(sign({ accessType: 'unsigned', id: 'not-an-object-id' })), {
+  it('accepts any non-empty accessType value', () => {
+    assert.deepEqual(verifyToken(sign({ accessType: 'unsigned', id: USER_ID })), {
       accessType: 'unsigned',
       emailAddress: undefined,
-      id: 'not-an-object-id',
+      id: USER_ID,
     });
+  });
+
+  it('rejects ids that are not 24-character hex strings', () => {
+    for (const id of ['not-an-object-id', 'aaaaaaaaaaaa', '', `${USER_ID}0`]) {
+      assert.equal(verifyToken(sign({ accessType: 'admin', id })), null, id);
+    }
+  });
+
+  it('rejects an empty accessType', () => {
+    assert.equal(verifyToken(sign({ accessType: '', id: USER_ID })), null);
   });
 
   it('rejects tokens signed with another algorithm', () => {
