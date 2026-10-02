@@ -18,7 +18,7 @@ const MobileBackButton: FC<MobileBackButtonProps> = ({ path }): ReactElement => 
   return (
     <Stack direction={'row'} alignItems={'center'} p={0} gap={0} onClick={handleNavigate}>
       <ArrowLeft />
-      <Typography variant="caption" sx={{ color: '#D1D1D1' }}>
+      <Typography variant="caption" sx={{ color: 'onSurface.neutral' }}>
         Back
       </Typography>
     </Stack>

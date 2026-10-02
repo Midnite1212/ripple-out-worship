@@ -1,12 +1,18 @@
-import { FC, SyntheticEvent } from 'react';
+import { ReactNode, SyntheticEvent } from 'react';
 import {
   Autocomplete,
   AutocompleteChangeDetails,
   AutocompleteChangeReason,
+  AutocompleteRenderGetTagProps,
   TextField,
 } from '@mui/material';
+import { FieldValues, Path, UseFormRegister } from 'react-hook-form';
 
-type AutocompleteInputProps = {
+type AutocompleteInputRegistration<T extends FieldValues> =
+  | { name: Path<T>; register: UseFormRegister<T> }
+  | { name?: never; register?: never };
+
+type AutocompleteInputProps<T extends FieldValues> = AutocompleteInputRegistration<T> & {
   id: string;
   options: string[];
   label: string;
@@ -16,19 +22,20 @@ type AutocompleteInputProps = {
     event: SyntheticEvent<Element, Event>,
     value: string | string[] | null,
     reason: AutocompleteChangeReason,
-    details?: AutocompleteChangeDetails<any> | undefined
+    details?: AutocompleteChangeDetails<string> | undefined
   ) => void;
-  register: any;
-  renderTags?: (value: readonly string[], getTagProps: any) => JSX.Element[];
+  renderTags?: (value: readonly string[], getTagProps: AutocompleteRenderGetTagProps) => ReactNode;
   freeSolo?: boolean;
   multiple?: boolean;
   getOptionDisabled?: (option: string) => boolean;
   helperText?: string;
   required?: boolean;
+  clearAriaLabel?: string;
 };
 
-const AutocompleteInput: FC<AutocompleteInputProps> = ({
+const AutocompleteInput = <T extends FieldValues>({
   id,
+  name,
   options,
   label,
   autoComplete,
@@ -41,7 +48,10 @@ const AutocompleteInput: FC<AutocompleteInputProps> = ({
   getOptionDisabled,
   helperText,
   required = false,
-}) => {
+  clearAriaLabel = 'Clear all selected folders',
+}: AutocompleteInputProps<T>) => {
+  const registration = name && register ? register(name) : undefined;
+
   return (
     <Autocomplete
       multiple={multiple}
@@ -61,7 +71,7 @@ const AutocompleteInput: FC<AutocompleteInputProps> = ({
             variant="outlined"
             label={label}
             helperText={helperText}
-            {...register(id)}
+            {...registration}
             inputProps={{
               ...params.inputProps,
               autoComplete: autoComplete,
@@ -72,7 +82,7 @@ const AutocompleteInput: FC<AutocompleteInputProps> = ({
       )}
       slotProps={{
         clearIndicator: {
-          'aria-label': 'Clear all selected folders',
+          'aria-label': clearAriaLabel,
         },
       }}
     />

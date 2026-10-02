@@ -1,4 +1,4 @@
-import { FC, ReactElement, useState, useEffect } from 'react';
+import { FC, ReactElement, useEffect, useState } from 'react';
 import {
   Box,
   Drawer,
@@ -17,21 +17,18 @@ import Language from '@mui/icons-material/Language';
 import Person from '@mui/icons-material/Person';
 import GlobalSearchModal from './GlobalSearchModal';
 import SearchIcon from '@mui/icons-material/Search';
-import { useOwnership, useSongs } from '../../helpers/customHooks';
+import { useOwnedSetlists, useSongs } from '../../helpers/customHooks';
 import { SongSchema } from '../../types/song.types';
-import { Setlist } from '../../types/setlist.types';
 import { SearchButtonBox } from './NavigationPaper';
 import { DESKTOP_SIDEBAR_WIDTH, MOBILE_NAVBAR_HEIGHT } from '../../constants';
-import { customAxios as axios } from '../custom/customAxios';
 
 const SideBar: FC = (): ReactElement => {
   const navigate = useNavigate();
-  const ownership = useOwnership();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
 
-  const [setlists, setSetlists] = useState<Setlist[]>([]);
+  const setlists = useOwnedSetlists();
 
   const allSongs = useSongs() as SongSchema[];
 
@@ -61,26 +58,6 @@ const SideBar: FC = (): ReactElement => {
     },
     height: MOBILE_NAVBAR_HEIGHT,
   };
-
-  useEffect(() => {
-    const fetchSetlists = async () => {
-      if (ownership.setlistIds.length > 0) {
-        try {
-          const setlistRes = await axios.get<Setlist[]>('/api/setlists/get');
-          if (setlistRes.status === 200) {
-            const filteredSetlists = setlistRes.data.filter((setlist) =>
-              ownership.setlistIds.some((setlistOwnership) => setlistOwnership.id === setlist._id)
-            );
-            setSetlists(filteredSetlists);
-          }
-        } catch (error) {
-          console.error('Error fetching setlists:', error);
-        }
-      }
-    };
-
-    fetchSetlists();
-  }, [ownership]);
 
   useEffect(() => {
     const path = location.pathname;
@@ -137,7 +114,7 @@ const SideBar: FC = (): ReactElement => {
             <Box
               sx={{
                 display: 'flex',
-                flexDir: 'column',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
                 mt: '1rem',
@@ -145,7 +122,7 @@ const SideBar: FC = (): ReactElement => {
               }}
             >
               <SearchButtonBox onClick={() => handleSearchClick()}>
-                <SearchIcon sx={{ color: '#D0BCFE', width: '1.75rem', height: '1.75rem' }} />
+                <SearchIcon sx={{ color: 'secondary.main', width: '1.75rem', height: '1.75rem' }} />
               </SearchButtonBox>
             </Box>
           )}
@@ -162,7 +139,9 @@ const SideBar: FC = (): ReactElement => {
                 return (
                   <ListItem key={index} disablePadding sx={{ justifyContent: 'center', flex: 1 }}>
                     <SearchButtonBox onClick={handleSearchClick}>
-                      <SearchIcon sx={{ color: '#D0BCFE', width: '1.75rem', height: '1.75rem' }} />
+                      <SearchIcon
+                        sx={{ color: 'secondary.main', width: '1.75rem', height: '1.75rem' }}
+                      />
                     </SearchButtonBox>
                   </ListItem>
                 );

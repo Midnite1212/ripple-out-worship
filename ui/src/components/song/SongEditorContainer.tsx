@@ -1,8 +1,11 @@
 import { FC, useCallback, useEffect, useState } from 'react';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { Controller, SubmitHandler, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { customAxios as axios } from '../custom/customAxios';
-import { SongEditorFields, SongEditorProps, SongSchema } from '../../types/song.types';
+import { SongSchema } from '../../types/song.types';
+import { SongEditorFormFields } from '../../types/form.types';
 import {
   musicKeysOptions,
   tempoOptions,
@@ -28,136 +31,136 @@ import {
   Chip,
   Autocomplete,
   Divider,
+  Theme,
 } from '@mui/material';
 
 // ICONS
 import InfoIcon from '@mui/icons-material/Info';
 import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
 import AutocompleteInput from '../custom/AutocompleteInput';
-import { useNavigate } from 'react-router-dom';
-import { MusicNote } from '@mui/icons-material';
+import { useNavigate, useParams } from 'react-router-dom';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import PageHeader from '../navigation/PageHeader';
 import HeaderWithIcon from '../custom/HeaderWithIcon';
-import { findFirstLetterLyrics } from '../../helpers/global';
+import { findFirstLetterLyrics, logRequestError } from '../../helpers/global';
+import { getNextSongCode } from '../../helpers/song/songCode';
 import SongDeleteDialog from './SongDeleteDialog';
 
-const SongEditorContainer: FC<SongEditorProps> = () => {
+const requiredString = (message: string) =>
+  z.string({ invalid_type_error: message, required_error: message }).min(1, message);
+
+const songEditorValidationSchema: z.ZodType<SongEditorFormFields> = z.object({
+  title: requiredString('Song title is required'),
+  artist: requiredString('Artist name is required'),
+  originalKey: requiredString('Original key is required'),
+  themes: z.array(z.string()).min(1, 'At least one theme must be selected'),
+  tempo: z.array(z.string()),
+  timeSignature: z.array(z.string()),
+  recommendedKeys: z.array(z.string()),
+  year: z.string().nullish(),
+  code: z.string().nullish(),
+  chordLyrics: requiredString('Chord lyrics are required'),
+  simplifiedChordLyrics: z.string().nullish(),
+});
+
+const SONG_EDITOR_DEFAULT_VALUES: SongEditorFormFields = {
+  title: '',
+  artist: '',
+  originalKey: '',
+  themes: [],
+  tempo: [],
+  timeSignature: [],
+  recommendedKeys: [],
+  year: '',
+  code: '',
+  chordLyrics: '',
+  simplifiedChordLyrics: '',
+};
+
+const SongEditorContainer: FC = () => {
   // hook to detect the window size
-  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const isDesktop = useMediaQuery((theme: Theme) => theme.breakpoints.up('sm'));
   const navigate = useNavigate();
+  const { id } = useParams();
+  const isEditing = Boolean(id);
+  const songId = id ?? '';
 
-  // STATES
-  // TODO: To be refactored to use RHF as a single source of truth instead of keeping 2 types of states
-  const [action, setAction] = useState<string>('new');
   const [openDeleteDialog, setOpenDeleteDialog] = useState<boolean>(false);
-
-  const [tempoList, setTempoList] = useState<string[]>([]);
-  const [disabledTempo, setDisabledTempo] = useState<string[]>(tempoOptions);
-  const [themeList, setThemeList] = useState<string[]>([]);
-  const [disabledTheme, setDisabledTheme] = useState<string[]>(themeOptions);
-  const [timeSignatureList, setTimeSignatureList] = useState<string[]>([]);
-  const [recommendedKeys, setRecommendedKeys] = useState<string[]>([]);
-
   const [successSnackbarOpen, setSuccessSnackbarOpen] = useState<boolean>(false);
   const [invalidSong, setInvalidSong] = useState<string>('');
 
-  const paths: string[] = window.location.pathname.split('/');
-
-  const [song, setSong] = useState<SongSchema>({} as SongSchema);
-  const [songId, setSongId] = useState<string>('');
-
-  useEffect(() => {
-    if (paths.includes('edit')) {
-      setAction('edit');
-      setSongId(paths[paths.length - 1]);
-    }
-  }, [paths]);
+  // FORM HANDLER
+  const { control, formState, handleSubmit, reset, setValue, watch } =
+    useForm<SongEditorFormFields>({
+      resolver: zodResolver(songEditorValidationSchema),
+      defaultValues: SONG_EDITOR_DEFAULT_VALUES,
+    });
+  const { errors } = formState;
+  const themes = watch('themes');
+  const tempo = watch('tempo');
 
   const getSong = useCallback(async () => {
     if (songId === '') return;
 
     try {
-      const { data, status } = await axios.get(`/api/songs/get?id=${songId}`);
-      if (status === 200) {
-        setSong(data);
+      const { data: song, status } = await axios.get<SongSchema>(`/api/songs/get?id=${songId}`);
+      if (status === 200 && song) {
+        reset({
+          title: song.title,
+          artist: song.artist,
+          originalKey: song.originalKey,
+          themes: song.themes ?? [],
+          tempo: song.tempo ?? [],
+          timeSignature: song.timeSignature ?? [],
+          recommendedKeys: song.recommendedKeys ?? [],
+          year: song.year,
+          code: song.code,
+          chordLyrics: song.chordLyrics,
+          simplifiedChordLyrics: song.simplifiedChordLyrics,
+        });
       }
     } catch (error) {
-      console.log(error);
+      logRequestError('Error fetching song:', error);
     }
-  }, [songId]);
+  }, [reset, songId]);
 
   useEffect(() => {
     getSong();
   }, [getSong]);
 
-  // FORM HANDLER
-  const { register, handleSubmit, formState, reset, control, setValue, getValues } =
-    useForm<SongEditorFields>();
-  const { errors } = formState;
-  useEffect(() => {
-    if (song && Object.keys(song).length > 0) {
-      setTempoList(song.tempo);
-      setDisabledTempo(tempoOptions.filter((tempo) => !song.tempo.includes(tempo)));
-      setThemeList(song.themes);
-      setDisabledTheme(themeOptions.filter((theme) => !song.themes.includes(theme)));
-      setTimeSignatureList(song.timeSignature);
-      setRecommendedKeys(song.recommendedKeys || []);
-      reset({
-        artist: song.artist,
-        title: song.title,
-        year: song.year,
-        code: song.code,
-        themes: song.themes,
-        chordLyrics: song.chordLyrics,
-        simplifiedChordLyrics: song.simplifiedChordLyrics,
-        originalKey: song.originalKey,
-      });
-    }
-  }, [song, reset]);
-
-  const handleSaveSong: SubmitHandler<SongEditorFields> = useCallback(
+  const handleSaveSong: SubmitHandler<SongEditorFormFields> = useCallback(
     async (data) => {
-      const songLetter = findFirstLetterLyrics(data.chordLyrics) || '';
-      const payload = await axios.get('/api/songs/search', {
-        params: {
-          code: songLetter,
-          sortBy: 'code',
-        },
-      });
-      const songs: SongSchema[] = payload.data.data;
-      const songIndex = songs.reverse()[0]?.code
-        ? parseInt(songs.reverse()[0].code.replace(songLetter, '')) + 1
-        : 1;
-
       try {
         let payload;
-        if (action === 'edit') {
+        if (isEditing) {
           payload = await axios.put('/api/songs/update', {
             id: songId,
             artist: data.artist,
             title: data.title,
-            themes: themeList,
-            tempo: tempoList,
+            themes: data.themes,
+            tempo: data.tempo,
             year: data.year,
             code: data.code,
-            timeSignature: timeSignatureList,
+            timeSignature: data.timeSignature,
             simplifiedChordLyrics: data.simplifiedChordLyrics,
             originalKey: data.originalKey,
-            recommendedKeys: recommendedKeys,
+            recommendedKeys: data.recommendedKeys,
             chordLyrics: data.chordLyrics,
           });
         } else {
-          payload = await axios.post('/api/songs/create', {
+          const songLetter = findFirstLetterLyrics(data.chordLyrics) || '';
+          const code = await getNextSongCode(songLetter);
+          payload = await axios.post<SongSchema>('/api/songs/create', {
             artist: data.artist,
             title: data.title,
-            themes: themeList,
-            tempo: tempoList,
+            themes: data.themes,
+            tempo: data.tempo,
             year: data.year,
-            code: songLetter + songIndex,
-            timeSignature: timeSignatureList,
+            code,
+            timeSignature: data.timeSignature,
             simplifiedChordLyrics: data.simplifiedChordLyrics,
             originalKey: data.originalKey,
-            recommendedKeys: recommendedKeys,
+            recommendedKeys: data.recommendedKeys,
             chordLyrics: data.chordLyrics,
           });
         }
@@ -165,20 +168,21 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
         if (payload.status === 200) {
           setInvalidSong('');
           setSuccessSnackbarOpen(true);
-          navigate(`/song/${songId}`);
+          const savedSongId = isEditing ? songId : payload.data?._id;
+          navigate(savedSongId ? `/song/${savedSongId}` : '/song');
           return payload.data;
         }
 
         handleCloseSuccessSnackbar();
         setInvalidSong('Error saving song!');
         return;
-      } catch (error: any) {
-        setInvalidSong(error.response.data);
+      } catch (err: unknown) {
+        setInvalidSong('Could not save this song. Please try again.');
         handleCloseSuccessSnackbar();
-        console.log(error);
+        logRequestError('Error saving song:', err);
       }
     },
-    [action, navigate, recommendedKeys, songId, tempoList, themeList, timeSignatureList]
+    [isEditing, navigate, songId]
   );
 
   const handleCloseSuccessSnackbar = () => {
@@ -186,115 +190,106 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
   };
 
   const handleDeleteTempo = (chipToDelete: string) => () => {
-    setTempoList((chips) => chips.filter((chip) => chip !== chipToDelete));
-    setDisabledTempo((prevDisabledChips) => [...prevDisabledChips, chipToDelete]);
+    setValue(
+      'tempo',
+      tempo.filter((chip) => chip !== chipToDelete)
+    );
   };
 
   const handleReactivateTempo = (chipToActivate: string) => () => {
-    setTempoList((prevTempoList) => [...prevTempoList, chipToActivate]);
-    setDisabledTempo((prevDisabledChips) =>
-      prevDisabledChips.filter((chip) => chip !== chipToActivate)
-    );
+    setValue('tempo', [...tempo, chipToActivate]);
   };
 
-  // TODO: refactor to use a single source of truth from RHF form states
-  // Manually retrigger validation from the themes external states for nwo
   const handleDeleteTheme = (chipToDelete: string) => () => {
-    const newThemeList = themeList.filter((chip) => chip !== chipToDelete);
-    setThemeList(newThemeList);
-    setDisabledTheme((prevDisabledChips) => [...prevDisabledChips, chipToDelete]);
-    setValue('themes', newThemeList, { shouldValidate: true });
+    setValue(
+      'themes',
+      themes.filter((chip) => chip !== chipToDelete),
+      { shouldValidate: true }
+    );
   };
 
   const handleReactivateTheme = (chipToActivate: string) => () => {
-    const newThemeList = [...themeList, chipToActivate];
-    setThemeList(newThemeList);
-    setDisabledTheme((prevDisabledChips) =>
-      prevDisabledChips.filter((chip) => chip !== chipToActivate)
-    );
-    setValue('themes', newThemeList, { shouldValidate: true });
+    setValue('themes', [...themes, chipToActivate], { shouldValidate: true });
   };
 
-  const SongActionButtons = ({ display }: { display: boolean }) => {
-    return (
-      <Box>
-        <Stack direction="column" display={display ? 'flex' : 'none'}>
-          <Stack direction="row">
-            {action === 'edit' && isDesktop ? (
-              <>
-                <Button
-                  color="error"
-                  variant="outlined"
-                  startIcon={<DeleteIcon />}
-                  onClick={() => setOpenDeleteDialog(true)}
-                  sx={{
-                    textTransform: 'none',
-                    borderRadius: '100px',
-                    px: 3,
-                  }}
-                >
-                  Delete
-                </Button>
-                <Divider variant="fullWidth" orientation="vertical" flexItem sx={{ mx: 2 }} />
-              </>
-            ) : null}
-            <Button
-              type={'submit'}
-              color="secondary"
-              variant="contained"
-              sx={{
-                mr: 1,
-                textTransform: 'none',
-                borderRadius: '100px',
-                px: 3,
-              }}
-            >
-              Save
-            </Button>
-            <Button
-              color={'secondary'}
-              sx={{
-                textTransform: 'none',
-                borderRadius: '100px',
-                border: 1,
-                px: 2,
-              }}
-              onClick={() => navigate(action === 'edit' ? `/song/${songId}` : '/song')}
-            >
-              Cancel
-            </Button>
-          </Stack>
-          {action === 'edit' && !isDesktop ? (
-            <Button
-              color="error"
-              variant="outlined"
-              startIcon={<DeleteIcon />}
-              onClick={() => setOpenDeleteDialog(true)}
-              sx={{
-                textTransform: 'none',
-                borderRadius: '100px',
-                px: 3,
-                py: '6px',
-                width: '33%',
-                mt: 2,
-              }}
-            >
-              Delete
-            </Button>
+  const songActionButtons = (
+    <Box>
+      <Stack direction="column">
+        <Stack direction="row">
+          {isEditing && isDesktop ? (
+            <>
+              <Button
+                color="error"
+                variant="outlined"
+                startIcon={<DeleteIcon />}
+                onClick={() => setOpenDeleteDialog(true)}
+                sx={{
+                  textTransform: 'none',
+                  borderRadius: '100px',
+                  px: 3,
+                }}
+              >
+                Delete
+              </Button>
+              <Divider variant="fullWidth" orientation="vertical" flexItem sx={{ mx: 2 }} />
+            </>
           ) : null}
+          <Button
+            type={'submit'}
+            color="secondary"
+            variant="contained"
+            sx={{
+              mr: 1,
+              textTransform: 'none',
+              borderRadius: '100px',
+              px: 3,
+            }}
+          >
+            Save
+          </Button>
+          <Button
+            color={'secondary'}
+            sx={{
+              textTransform: 'none',
+              borderRadius: '100px',
+              border: 1,
+              px: 2,
+            }}
+            onClick={() => navigate(isEditing ? `/song/${songId}` : '/song')}
+          >
+            Cancel
+          </Button>
         </Stack>
-      </Box>
-    );
-  };
+        {isEditing && !isDesktop ? (
+          <Button
+            color="error"
+            variant="outlined"
+            startIcon={<DeleteIcon />}
+            onClick={() => setOpenDeleteDialog(true)}
+            sx={{
+              textTransform: 'none',
+              borderRadius: '100px',
+              px: 3,
+              py: '6px',
+              width: '33%',
+              mt: 2,
+            }}
+          >
+            Delete
+          </Button>
+        ) : null}
+      </Stack>
+    </Box>
+  );
 
   return (
     <Container sx={{ py: '1rem', px: '2rem', height: '100%', minWidth: '100%', overflow: 'auto' }}>
       <Box>
         <form onSubmit={handleSubmit(handleSaveSong)}>
           <PageHeader
-            title={action === 'edit' ? 'Edit Song' : 'New Song'}
-            icon={<MusicNote />}
-            actionButtons={<SongActionButtons display={isDesktop} />}
+            title={isEditing ? 'Edit Song' : 'New Song'}
+            icon={<MusicNoteIcon />}
+            actionButtons={isDesktop ? songActionButtons : null}
           />
 
           <Box my={'24px'}>
@@ -337,7 +332,6 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                     name="title"
                     control={control}
                     defaultValue=""
-                    rules={{ required: 'Song title is required' }}
                     render={({ field }) => (
                       <TextField
                         {...field}
@@ -356,7 +350,6 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                     name="artist"
                     control={control}
                     defaultValue=""
-                    rules={{ required: 'Artist name is required' }}
                     render={({ field }) => (
                       <TextField
                         {...field}
@@ -371,18 +364,6 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                   />
 
                   {/* Themes field */}
-                  <Controller
-                    name="themes"
-                    control={control}
-                    defaultValue={[]}
-                    rules={{
-                      validate: () => {
-                        const currentThemes = getValues('themes') || [];
-                        return currentThemes.length > 0 || 'At least one theme must be selected';
-                      },
-                    }}
-                    render={() => <TextField sx={{ display: 'none' }} />}
-                  />
                   <FormControl fullWidth>
                     <Box>
                       <Typography
@@ -401,25 +382,22 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                           {errors.themes.message}
                         </Typography>
                       )}
-                      {themeOptions.map((item) => (
-                        <Chip
-                          sx={{
-                            backgroundColor: disabledTheme.includes(item)
-                              ? 'secondary.lighter'
-                              : 'primary.dark',
-                            borderRadius: '8px',
-                            m: 0.5,
-                          }}
-                          key={item}
-                          label={item}
-                          onDelete={
-                            disabledTheme.includes(item) ? undefined : handleDeleteTheme(item)
-                          }
-                          onClick={
-                            disabledTheme.includes(item) ? handleReactivateTheme(item) : undefined
-                          }
-                        />
-                      ))}
+                      {themeOptions.map((item) => {
+                        const isSelected = themes.includes(item);
+                        return (
+                          <Chip
+                            sx={{
+                              backgroundColor: isSelected ? 'primary.dark' : 'secondary.lighter',
+                              borderRadius: '8px',
+                              m: 0.5,
+                            }}
+                            key={item}
+                            label={item}
+                            onDelete={isSelected ? handleDeleteTheme(item) : undefined}
+                            onClick={isSelected ? undefined : handleReactivateTheme(item)}
+                          />
+                        );
+                      })}
                     </Box>
                   </FormControl>
 
@@ -429,41 +407,42 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                       <Typography variant="h4" sx={{ pb: 1 }}>
                         Tempo
                       </Typography>
-                      {tempoOptions.map((item) => (
-                        <Chip
-                          sx={{
-                            backgroundColor: disabledTempo.includes(item)
-                              ? 'secondary.lighter'
-                              : 'primary.dark',
-                            borderRadius: '8px',
-                            m: 0.5,
-                          }}
-                          key={item}
-                          label={item}
-                          onDelete={
-                            disabledTempo.includes(item) ? undefined : handleDeleteTempo(item)
-                          }
-                          onClick={
-                            disabledTempo.includes(item) ? handleReactivateTempo(item) : undefined
-                          }
-                        />
-                      ))}
+                      {tempoOptions.map((item) => {
+                        const isSelected = tempo.includes(item);
+                        return (
+                          <Chip
+                            sx={{
+                              backgroundColor: isSelected ? 'primary.dark' : 'secondary.lighter',
+                              borderRadius: '8px',
+                              m: 0.5,
+                            }}
+                            key={item}
+                            label={item}
+                            onDelete={isSelected ? handleDeleteTempo(item) : undefined}
+                            onClick={isSelected ? undefined : handleReactivateTempo(item)}
+                          />
+                        );
+                      })}
                     </Box>
                   </FormControl>
 
                   {/* Time Signature field */}
                   <FormControl fullWidth>
-                    <AutocompleteInput
-                      id="time-signature"
-                      options={timeSignatureOptions}
-                      label="Time Signature"
-                      autoComplete="time-signature"
-                      value={timeSignatureList}
-                      onChange={(_, newValue) => {
-                        setTimeSignatureList(newValue as string[]);
-                      }}
-                      register={register}
-                      multiple
+                    <Controller
+                      name="timeSignature"
+                      control={control}
+                      render={({ field }) => (
+                        <AutocompleteInput
+                          id="time-signature"
+                          options={timeSignatureOptions}
+                          label="Time Signature"
+                          clearAriaLabel="Clear all selected time signatures"
+                          autoComplete="time-signature"
+                          value={field.value}
+                          onChange={(_, newValue) => field.onChange(newValue)}
+                          multiple
+                        />
+                      )}
                     />
                   </FormControl>
 
@@ -473,7 +452,6 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                       name="originalKey"
                       control={control}
                       defaultValue=""
-                      rules={{ required: 'Original key is required' }}
                       render={({ field }) => (
                         <Autocomplete
                           {...field}
@@ -499,17 +477,21 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
 
                   {/* Recommended Keys field */}
                   <FormControl fullWidth>
-                    <AutocompleteInput
-                      id="recommended-keys"
-                      options={musicKeysOptions}
-                      label="Recommended Keys"
-                      autoComplete="recommended-keys"
-                      value={recommendedKeys}
-                      onChange={(_, newValue) => {
-                        setRecommendedKeys(newValue as string[]);
-                      }}
-                      register={register}
-                      multiple
+                    <Controller
+                      name="recommendedKeys"
+                      control={control}
+                      render={({ field }) => (
+                        <AutocompleteInput
+                          id="recommended-keys"
+                          options={musicKeysOptions}
+                          label="Recommended Keys"
+                          clearAriaLabel="Clear all selected recommended keys"
+                          autoComplete="recommended-keys"
+                          value={field.value}
+                          onChange={(_, newValue) => field.onChange(newValue)}
+                          multiple
+                        />
+                      )}
                     />
                   </FormControl>
 
@@ -557,7 +539,6 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                     name="chordLyrics"
                     control={control}
                     defaultValue=""
-                    rules={{ required: 'Chord lyrics are required' }}
                     render={({ field }) => (
                       <TextField
                         {...field}
@@ -625,7 +606,7 @@ const SongEditorContainer: FC<SongEditorProps> = () => {
                   />
                 </Stack>
               </Box>
-              <SongActionButtons display={!isDesktop} />
+              {isDesktop ? null : songActionButtons}
             </Stack>
           </Box>
         </form>

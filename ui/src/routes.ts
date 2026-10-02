@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { ComponentType } from 'react';
 import HomeContainer from './components/home/HomeContainer';
 import MainLoginContainer from './components/auth/MainLoginContainer';
 import SongEditorContainer from './components/song/SongEditorContainer';
@@ -10,18 +10,19 @@ import SetlistEditorContainer from './components/setlist/SetlistEditorContainer'
 import SetlistViewContainer from './components/setlistView/SetlistViewContainer';
 import SetlistAdminViewContainer from './components/setlist/adminView/SetlistAdminViewContainer';
 import SetlistFolderDetail from './components/setlist/SetlistFolderDetail';
+import ErrorPage from './components/custom/ErrorPage';
+import type { RoutePermission } from './components/custom/PrivateRouteWrapper';
 
-// interface
-interface Route {
+type AppRoute = {
   key: string;
   title: string;
   path: string;
   enabled: boolean;
-  component: FC<any>;
-  permissions: Array<string>;
-}
+  component: ComponentType;
+  permissions: RoutePermission[];
+};
 
-export const routes: Array<Route> = [
+export const routes: AppRoute[] = [
   // Auth routes
   {
     key: 'login-route',
@@ -115,7 +116,7 @@ export const routes: Array<Route> = [
     permissions: ['user'],
   },
   {
-    key: 'setlist-route',
+    key: 'setlist-admin-route',
     title: 'Setlist',
     path: '/setlist/details/:id?',
     enabled: true,
@@ -123,7 +124,7 @@ export const routes: Array<Route> = [
     permissions: ['user'],
   },
   {
-    key: 'setlist-route',
+    key: 'setlist-folder-route',
     title: 'Setlist',
     path: '/setlist/folder/:id?',
     enabled: true,
@@ -153,5 +154,13 @@ export const routes: Array<Route> = [
     enabled: true,
     component: SetlistViewContainer,
     permissions: ['public', 'noUser'],
+  },
+  {
+    key: 'not-found-route',
+    title: 'Page Not Found',
+    path: '*',
+    enabled: true,
+    component: ErrorPage,
+    permissions: ['public'],
   },
 ];

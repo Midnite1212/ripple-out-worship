@@ -949,7 +949,6 @@ const SetlistDetailsSection: FC<{
           autoComplete="folders"
           value={folderList}
           onChange={(_, newValue) => onFolderChange(newValue as string[])}
-          register={register}
           multiple
         />
       </FormControl>

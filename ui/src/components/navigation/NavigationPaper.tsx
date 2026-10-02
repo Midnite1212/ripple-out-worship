@@ -1,13 +1,13 @@
 import { Box, styled } from '@mui/material';
 
 export const SearchButtonBox = styled(Box)(({ theme }) => ({
-  color: 'primary.lighter',
-  backgroundColor: '#1D192B',
+  color: theme.palette.primary.lighter,
+  backgroundColor: theme.palette.primary.darker,
   borderRadius: '15px',
   padding: '1rem',
   width: 'fit-content',
   display: 'flex',
-  flexDir: 'column',
+  flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',

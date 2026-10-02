@@ -1,10 +1,20 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { Ownership } from '../types/ownership.types';
+
+const initialState: Ownership = {
+  userId: '',
+  fullName: '',
+  accessType: '',
+  groupIds: [],
+  setlistIds: [],
+  isDeleted: false,
+};
 
 export const ownershipSlice = createSlice({
   name: 'ownership',
-  initialState: {},
+  initialState,
   reducers: {
-    fetchOwnership: (_, action) => {
+    fetchOwnership: (_, action: PayloadAction<Ownership>) => {
       return action.payload;
     },
   },

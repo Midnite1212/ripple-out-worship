@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { customAxios as axios } from '../custom/customAxios';
 import {
@@ -19,14 +20,14 @@ import { z } from 'zod';
 import { RegisterFormFields } from '../../types/form.types';
 import { formSpacing } from '../../constants';
 import {
-  stringValidator,
   emailValidator,
   fullNameValidator,
   passwordValidator,
+  stringValidator,
 } from './helpers/zod.validators';
 import { useNavigate } from 'react-router-dom';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import { Visibility } from '@mui/icons-material';
+import Visibility from '@mui/icons-material/Visibility';
 
 // zod validation
 const registerValidationSchema = z
@@ -53,6 +54,11 @@ const RegisterContainer: React.FC = () => {
   const [open, setOpen] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => clearTimeout(redirectTimeoutRef.current);
+  }, []);
 
   const handleClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') {
@@ -72,24 +78,24 @@ const RegisterContainer: React.FC = () => {
 
   const handleRegister: SubmitHandler<RegisterFormFields> = async (data) => {
     try {
-      const payload = await axios.post('/external-api/auth/signup', {
+      await axios.post('/external-api/auth/signup', {
         fullName: data.fullName,
         email: data.email,
         password: data.password ?? '',
       });
-      if (payload.status === 200) {
-        setOpen(true);
-        setTimeout(() => {
-          navigate('/login');
-        }, 3000);
-      }
-    } catch (err: any) {
-      if (err.response && err.response.status === 409) {
-        console.log('Email already exists');
+      setInvalidRegistration('');
+      setOpen(true);
+      redirectTimeoutRef.current = setTimeout(() => {
+        navigate('/login');
+      }, 3000);
+    } catch (err: unknown) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 409) {
         setInvalidRegistration('Email already exists, please try with another email');
-      } else if (err.response && err.response.status === 422) {
-        console.log('Required fields not filled');
+      } else if (status === 422) {
         setInvalidRegistration('Required fields not filled');
+      } else {
+        setInvalidRegistration('Could not create your account. Please try again.');
       }
     }
   };
@@ -145,6 +151,7 @@ const RegisterContainer: React.FC = () => {
                 </Typography>
                 <TextField
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
                   {...register('password', {
                     required: 'Required',
                   })}
@@ -172,6 +179,7 @@ const RegisterContainer: React.FC = () => {
                 </Typography>
                 <TextField
                   type={showConfirmPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
                   {...register('confirmPassword', {
                     required: 'Required',
                   })}
@@ -200,7 +208,7 @@ const RegisterContainer: React.FC = () => {
               ) : null}
               <Button
                 type={'submit'}
-                style={{ borderRadius: '30px' }}
+                sx={{ borderRadius: '30px' }}
                 color={'secondary'}
                 variant={'contained'}
                 fullWidth

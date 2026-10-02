@@ -11,4 +11,24 @@ type RecoverPasswordFields = Omit<LoginFormFields, 'password'>;
 
 type ResetPasswordFields = Omit<RegisterFormFields, 'fullName' | 'email'>;
 
-export type { LoginFormFields, RegisterFormFields, RecoverPasswordFields, ResetPasswordFields };
+type SongEditorFormFields = {
+  title: string;
+  artist: string;
+  originalKey: string;
+  themes: string[];
+  tempo: string[];
+  timeSignature: string[];
+  recommendedKeys: string[];
+  year?: string | null;
+  code?: string | null;
+  chordLyrics: string;
+  simplifiedChordLyrics?: string | null;
+};
+
+export type {
+  LoginFormFields,
+  RegisterFormFields,
+  RecoverPasswordFields,
+  ResetPasswordFields,
+  SongEditorFormFields,
+};
