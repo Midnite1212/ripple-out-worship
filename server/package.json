@@ -23,8 +23,10 @@
     "typescript": "^5.1.6"
   },
   "scripts": {
-    "build": "rimraf dist && tsc",
-    "start": "set NODE_ENV=production && nodemon app.ts",
-    "dev": "set NODE_ENV=test && nodemon app.ts"
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "start": "cross-env NODE_ENV=production nodemon app.ts",
+    "dev": "cross-env NODE_ENV=test nodemon app.ts",
+    "test": "cross-env TS_NODE_TRANSPILE_ONLY=1 node --test --require ts-node/register 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
   }
 }
