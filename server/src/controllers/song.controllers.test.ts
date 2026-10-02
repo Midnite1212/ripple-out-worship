@@ -19,6 +19,7 @@ import {
 } from './song.controllers';
 
 const SONG_ID = '507f1f77bcf86cd799439031';
+const OTHER_SONG_ID = '507f1f77bcf86cd799439032';
 
 const call = async (handler: Parameters<typeof callHandler>[0], init: FakeRequestInit) => {
   const res = createResponse();
@@ -195,14 +196,19 @@ describe('song controllers', () => {
       );
     });
 
-    it('parses page and limit into positive integers with a limit cap of 100', async () => {
+    it('parses page and limit into positive integers, defaulting invalid values', async () => {
       const cases: Array<[Record<string, unknown>, number, number, number]> = [
         [{ limit: '10', page: '3' }, 3, 20, 10],
+        [{ limit: '100', page: '1' }, 1, 0, 100],
         [{ limit: '500', page: '1' }, 1, 0, 100],
         [{ limit: '0', page: '0' }, 1, 0, 20],
         [{ limit: 'abc', page: 'abc' }, 1, 0, 20],
-        [{ limit: '-5', page: '-2' }, 1, 0, 1],
+        [{ limit: '-5', page: '-2' }, 1, 0, 20],
+        [{ limit: '0.5', page: '0.5' }, 1, 0, 20],
         [{ limit: '7.9', page: '2.7' }, 2, 7, 7],
+        [{ limit: 'Infinity', page: 'Infinity' }, 1, 0, 20],
+        [{ limit: '1e400', page: '1e400' }, 1, 0, 20],
+        [{ limit: ['5'], page: { $gt: 1 } }, 1, 0, 20],
       ];
       for (const [query, currentPage, skipped, limited] of cases) {
         mock.restoreAll();
@@ -246,11 +252,12 @@ describe('song controllers', () => {
 
   describe('updateSong', () => {
     it('rejects a missing or invalid id, or no allowed fields', async () => {
-      const updateOne = mock.method(Song, 'updateOne', async () => ({ matchedCount: 1 }));
+      const update = mock.method(Song, 'findOneAndUpdate', async () => ({ _id: SONG_ID }));
       for (const body of [
         undefined,
         { title: 'T' },
         { id: 'bad', title: 'T' },
+        { id: 'aaaaaaaaaaaa', title: 'T' },
         { id: SONG_ID },
         { id: SONG_ID, isVerified: true },
       ]) {
@@ -258,35 +265,54 @@ describe('song controllers', () => {
         assert.equal(res.statusCode, 400, JSON.stringify(body));
         assert.equal(res.body, 'Missing required fields');
       }
-      assert.equal(updateOne.mock.callCount(), 0);
+      assert.equal(update.mock.callCount(), 0);
     });
 
-    it('updates allowed fields and returns a message, not the song', async () => {
-      const updateOne = mock.method(Song, 'updateOne', async () => ({ matchedCount: 1 }));
+    it('updates allowed fields and returns the updated song', async () => {
+      const song = { _id: SONG_ID, title: 'T' };
+      const update = mock.method(Song, 'findOneAndUpdate', async () => song);
       const res = await call(updateSong, {
         body: { id: SONG_ID, isDeleted: false, isVerified: true, title: 'T' },
       });
-      assert.deepEqual(updateOne.mock.calls[0]?.arguments, [
+      assert.deepEqual(update.mock.calls[0]?.arguments, [
         { _id: SONG_ID, isDeleted: false },
         { $set: { title: 'T' } },
-        { runValidators: true },
+        { new: true, runValidators: true },
       ]);
       assert.equal(res.statusCode, 200);
-      assert.equal(res.body, 'Song updated');
+      assert.equal(res.body, song);
     });
 
     it('returns 404 when no live song matches', async () => {
-      mock.method(Song, 'updateOne', async () => ({ matchedCount: 0 }));
+      mock.method(Song, 'findOneAndUpdate', async () => null);
       const res = await call(updateSong, { body: { id: SONG_ID, title: 'T' } });
       assert.equal(res.statusCode, 404);
       assert.equal(res.body, 'Song not found');
     });
+
+    it('maps an update failure to a generic 500', async () => {
+      mock.method(Song, 'findOneAndUpdate', async () => {
+        throw new Error('db down');
+      });
+      const res = await call(updateSong, { body: { id: SONG_ID, title: 'T' } });
+      assert.equal(res.statusCode, 500);
+      assert.equal(res.body, 'Something went wrong');
+    });
   });
 
   describe('deleteSong', () => {
-    it('rejects bodies without a top-level valid id, including params.id', async () => {
+    it('rejects bodies without a valid id or params.id', async () => {
       const updateOne = mock.method(Song, 'updateOne', async () => ({ matchedCount: 1 }));
-      for (const body of [undefined, {}, { params: null }, { params: { id: SONG_ID } }]) {
+      for (const body of [
+        undefined,
+        {},
+        { params: null },
+        { params: {} },
+        { id: 'bad' },
+        { id: 'aaaaaaaaaaaa' },
+        { params: { id: 'bad' } },
+        { id: 'bad', params: { id: 'bad' } },
+      ]) {
         const res = await call(deleteSong, { body });
         assert.equal(res.statusCode, 400, JSON.stringify(body));
         assert.equal(res.body, 'Missing required fields');
@@ -303,6 +329,24 @@ describe('song controllers', () => {
       ]);
       assert.equal(res.statusCode, 200);
       assert.equal(res.body, 'Song successfully deleted');
+    });
+
+    it('accepts params.id, preferring whichever of params.id and id is valid', async () => {
+      const updateOne = mock.method(Song, 'updateOne', async () => ({ matchedCount: 1 }));
+      const bodies = [
+        { params: { id: SONG_ID } },
+        { id: OTHER_SONG_ID, params: { id: SONG_ID } },
+        { id: SONG_ID, params: { id: 'bad' } },
+        { id: SONG_ID, params: null },
+      ];
+      for (const body of bodies) {
+        const res = await call(deleteSong, { body });
+        assert.equal(res.statusCode, 200, JSON.stringify(body));
+      }
+      assert.deepEqual(
+        updateOne.mock.calls.map((c) => c.arguments[0]),
+        bodies.map(() => ({ _id: SONG_ID, isDeleted: false }))
+      );
     });
 
     it('returns 404 when no live song matches', async () => {

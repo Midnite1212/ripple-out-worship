@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { isObjectIdString } from './validation';
 
 export type TokenUser = {
   id: string;
@@ -14,8 +15,9 @@ const verifyToken = (token: string): TokenUser | null => {
     const payload = jwt.verify(token, secret, { algorithms: ['HS256'] });
     if (
       typeof payload !== 'object' ||
-      typeof payload.id !== 'string' ||
-      typeof payload.accessType !== 'string'
+      !isObjectIdString(payload.id) ||
+      typeof payload.accessType !== 'string' ||
+      payload.accessType === ''
     ) {
       return null;
     }

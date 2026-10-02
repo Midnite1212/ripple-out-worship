@@ -38,8 +38,11 @@ const toSearchArray = (value: unknown): string[] | null => {
   return null;
 };
 
-const toPositiveInteger = (value: unknown, fallback: number): number =>
-  Math.max(1, Math.floor(Number(value) || fallback));
+const toPositiveInteger = (value: unknown, fallback: number): number => {
+  if (typeof value !== 'string') return fallback;
+  const parsed = Math.floor(Number(value));
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
 
 const createSong: RequestHandler = async (req: Request, res: Response): Promise<void> => {
   const toCreate = pick(req.body, SONG_FIELDS);
@@ -157,14 +160,14 @@ const updateSong: RequestHandler = async (req: Request, res: Response): Promise<
   }
 
   try {
-    const result = await Song.updateOne(
+    const song = await Song.findOneAndUpdate(
       { _id: id, isDeleted: false },
       { $set: toUpdate },
-      { runValidators: true }
+      { new: true, runValidators: true }
     );
 
-    if (result.matchedCount > 0) {
-      sendResponse(res, 200, 'Song updated');
+    if (song) {
+      sendResponse(res, 200, song);
     } else {
       sendResponse(res, 404, 'Song not found');
     }
@@ -174,7 +177,7 @@ const updateSong: RequestHandler = async (req: Request, res: Response): Promise<
 };
 
 const deleteSong: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const id: unknown = req.body?.id;
+  const id: unknown = [req.body?.params?.id, req.body?.id].find(isObjectIdString);
 
   if (!isObjectIdString(id)) {
     sendResponse(res, 400, 'Missing required fields');
