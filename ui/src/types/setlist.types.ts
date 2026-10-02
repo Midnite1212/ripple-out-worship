@@ -9,7 +9,7 @@ interface SetlistEditorFields {
 }
 
 interface SetlistEditorProps {
-  actionOnEditor: string;
+  actionOnEditor?: string;
 }
 
 export type Setlist = {

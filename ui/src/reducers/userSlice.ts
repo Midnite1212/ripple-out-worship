@@ -1,21 +1,18 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { PayloadAction, createSlice } from '@reduxjs/toolkit';
 
 export const userSlice = createSlice({
   name: 'user',
-  initialState: {},
+  initialState: '' as string,
   reducers: {
-    signin: (_, action) => {
+    signin: (_, action: PayloadAction<string>) => {
       return action.payload;
     },
-    signout: (_, _action) => {
-      return {};
-    },
-    refetchUser: (_, action) => {
-      return action.payload;
+    signout: () => {
+      return '';
     },
   },
 });
 
-export const { signin, signout, refetchUser } = userSlice.actions;
+export const { signin, signout } = userSlice.actions;
 
 export default userSlice.reducer;

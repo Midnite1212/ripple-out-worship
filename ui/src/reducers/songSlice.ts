@@ -1,15 +1,13 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { SongSchema } from '../types/song.types';
 
 export const songSlice = createSlice({
   name: 'songs',
-  initialState: {
-    
-  },
+  initialState: [] as SongSchema[],
   reducers: {
-    fetchSongs: (_, action) => {
+    fetchSongs: (_, action: PayloadAction<SongSchema[]>) => {
       return action.payload;
     },
-
   },
 });
 

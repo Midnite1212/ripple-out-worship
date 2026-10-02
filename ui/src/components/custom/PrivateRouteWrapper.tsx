@@ -1,139 +1,80 @@
+import { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import {
-  cloneElement,
-  isValidElement,
-  ReactElement,
-  useEffect,
-  useState,
-  useTransition,
-} from 'react';
 import { Box, Skeleton } from '@mui/material';
 import ErrorPage from './ErrorPage';
 import Sidebar from '../navigation/Sidebar';
 import { useUser } from '../../helpers/customHooks';
 import { DESKTOP_SIDEBAR_WIDTH, MOBILE_NAVBAR_HEIGHT } from '../../constants';
+import { UserAccessType } from '../../types/user.types';
 
-interface PrivateRouteProps {
-  children: ReactElement;
-  permissions: string[];
-}
+export type RoutePermission = 'noUser' | 'user' | 'admin' | 'public';
 
-const PageWrapper = ({
-  children,
-  showNavBar = true,
-}: {
-  children: ReactElement;
+type PageWrapperProps = {
+  children: ReactNode;
   showNavBar?: boolean;
-}) => {
-  if (isValidElement(children)) {
-    // Render the navbar, sidebar, and the children of the route
-    return (
-      <>
-        <Box component="main" display="flex" width="100%" height="100%" sx={{ flexGrow: 1 }}>
-          {showNavBar && <Sidebar />}
-          <Box
-            overflow="auto"
-            sx={{
-              height: showNavBar
-                ? { xs: `calc(100% - ${MOBILE_NAVBAR_HEIGHT})`, sm: '100%' }
-                : '100%',
-              width: showNavBar
-                ? { xs: '100%', sm: `calc(100% - ${DESKTOP_SIDEBAR_WIDTH})` }
-                : '100%',
-            }}
-          >
-            {cloneElement(children)}
-          </Box>
-        </Box>
-      </>
-    );
-  } else {
-    // If the children is not a valid React element, render the error page
-    return <ErrorPage />;
-  }
 };
 
-const PrivateRouteWrapper = ({ children, permissions }: PrivateRouteProps) => {
+type PrivateRouteWrapperProps = {
+  children: ReactNode;
+  permissions: RoutePermission[];
+};
+
+const PageWrapper = ({ children, showNavBar = true }: PageWrapperProps) => {
+  return (
+    <Box display="flex" width="100%" height="100%" sx={{ flexGrow: 1 }}>
+      {showNavBar && <Sidebar />}
+      <Box
+        overflow="auto"
+        sx={{
+          height: showNavBar ? { xs: `calc(100% - ${MOBILE_NAVBAR_HEIGHT})`, sm: '100%' } : '100%',
+          width: showNavBar ? { xs: '100%', sm: `calc(100% - ${DESKTOP_SIDEBAR_WIDTH})` } : '100%',
+        }}
+      >
+        {children}
+      </Box>
+    </Box>
+  );
+};
+
+const PrivateRouteWrapper = ({ children, permissions }: PrivateRouteWrapperProps) => {
   const { user, loading } = useUser();
   const location = useLocation();
 
-  const [isPending, startTransition] = useTransition();
-  const [isChecking, setIsChecking] = useState(true);
-  const [authState, setAuthState] = useState({
-    isAuthenticated: false,
-    //TODO: not needed?
-    isAdmin: false,
-  });
-
-  // Update auth state with transition to prevent UI flickering
-  useEffect(() => {
-    setIsChecking(true);
-    if (!loading) {
-      startTransition(() => {
-        setAuthState({
-          isAuthenticated: !!user && Object.keys(user).length > 0,
-          isAdmin: user?.accessType === 'admin',
-        });
-        setIsChecking(false);
-      });
-    }
-  }, [user, loading]);
-
-  // Extract route requirements
-  const requiresNoUser = permissions.includes('noUser');
-  const requiresUser = permissions.includes('user');
-  const requiresAdmin = permissions.includes('admin');
-  const isPublic = permissions.includes('public');
-
-  const { isAuthenticated, isAdmin } = authState;
-
-  // Show loading state while determining auth status or during transition
-  if (loading || isPending || isChecking) {
-    return <Skeleton />;
-  }
-  // CASE 2: Routes that don't care about auth status (public routes)
-  if (isPublic && isAuthenticated) {
-    return <PageWrapper children={children} showNavBar={false} />;
+  if (loading) {
+    return <Skeleton variant="rectangular" width="100%" height="100%" />;
   }
 
-  // CASE 3: Routes that specifically require NO user (exclusive guest routes)
-  if (requiresNoUser) {
+  const isAuthenticated = !!user && Object.keys(user).length > 0;
+  const isAdmin = user?.accessType === UserAccessType.ADMIN;
+  const loginRedirect = <Navigate to="/login" state={{ from: location.pathname }} replace />;
+
+  if (permissions.includes('public')) {
+    return isAuthenticated ? (
+      <PageWrapper showNavBar={false}>{children}</PageWrapper>
+    ) : (
+      <Box sx={{ flexGrow: 1 }}>{children}</Box>
+    );
+  }
+
+  if (permissions.includes('noUser')) {
+    return isAuthenticated ? (
+      <Navigate to="/" replace />
+    ) : (
+      <Box sx={{ flexGrow: 1 }}>{children}</Box>
+    );
+  }
+
+  if (permissions.includes('user')) {
+    return isAuthenticated ? <PageWrapper>{children}</PageWrapper> : loginRedirect;
+  }
+
+  if (permissions.includes('admin')) {
     if (!isAuthenticated) {
-      return (
-        <Box component="main" sx={{ flexGrow: 1 }}>
-          {cloneElement(children)}
-        </Box>
-      );
-    } else {
-      // User is logged in but route requires no user
-      return <Navigate to="/" replace />;
+      return loginRedirect;
     }
+    return isAdmin ? <PageWrapper>{children}</PageWrapper> : <ErrorPage />;
   }
 
-  // CASE 4: Routes that require any authenticated user
-  if (requiresUser) {
-    if (isAuthenticated) {
-      return <PageWrapper children={children} />;
-    } else {
-      // Redirect to login if not authenticated
-      return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-    }
-  }
-
-  // CASE 5: Routes that require admin access
-  if (requiresAdmin) {
-    if (isAuthenticated && isAdmin) {
-      return <PageWrapper children={children} />;
-    } else if (isAuthenticated) {
-      // User is logged in but not admin
-      return <ErrorPage />;
-    } else {
-      // Not logged in at all
-      return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-    }
-  }
-
-  // Default - access denied
   return <ErrorPage />;
 };
 

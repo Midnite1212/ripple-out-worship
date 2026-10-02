@@ -17,7 +17,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { RecoverPasswordFields } from '../../types/form.types';
 import { formSpacing } from '../../constants';
-import { ArrowBackRounded } from '@mui/icons-material';
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import { emailValidator } from './helpers/zod.validators';
 
 // zod validation
@@ -59,7 +59,7 @@ const RecoverPasswordContainer: React.FC = () => {
         setMessage('An error occurred. Please try again.');
       }
       setOpen(true);
-    } catch (err: any) {
+    } catch {
       setStatus('error');
       setMessage('An error occurred. Please try again.');
       setOpen(true);
@@ -85,7 +85,7 @@ const RecoverPasswordContainer: React.FC = () => {
           sx={{ textDecoration: 'none' }}
           marginBottom={['0.75rem', '1.5rem']}
         >
-          <ArrowBackRounded style={{ color: theme.palette.text.primary }} />
+          <ArrowBackRounded sx={{ color: theme.palette.text.primary }} />
           <Typography variant="body1" color={'text'} marginLeft={1}>
             Return to Login
           </Typography>
@@ -116,7 +116,7 @@ const RecoverPasswordContainer: React.FC = () => {
               <Button
                 type={'submit'}
                 color={'secondary'}
-                style={{ borderRadius: '30px' }}
+                sx={{ borderRadius: '30px' }}
                 variant={'contained'}
                 fullWidth
               >

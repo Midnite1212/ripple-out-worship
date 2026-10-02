@@ -15,7 +15,7 @@ type SongEditorFields = {
 };
 
 interface SongEditorProps {
-  actionOnEditor: string;
+  actionOnEditor?: string;
 }
 
 export type { SongEditorFields, SongEditorProps };
