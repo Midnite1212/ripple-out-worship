@@ -338,6 +338,10 @@ Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `se
 
 `server/tsconfig.json` has `noUnusedLocals` and `noUnusedParameters`. Prefix intentionally unused parameters with `_`. `yarn tsc --noEmit` in `server/` must show 0 errors.
 
+### Legacy data backfill
+
+`server/scripts/backfill-legacy-ownership.ts` fills a missing `createdBy` on setlists and folders when exactly one live ownership lists them, and syncs `folder.setlistIds` with `setlist.groupIds` as a union; the rules live in `src/utils/legacyOwnership.ts`. Run `yarn backfill:legacy` in `server/` (connects through `connectToDB()` with `server/.env`) for a dry-run report of counts and ids, review it, then `yarn backfill:legacy --apply` to write; `--uri=<mongodb uri>` targets another database, such as a local one, instead of the `MONGO_*` settings. Reruns are no-ops.
+
 ## Auth Flow
 
 - The main HMCC HK site (`MAIN_URL`) owns users, login, Google login, sign-up, and password reset. This repo has no user model.
