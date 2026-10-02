@@ -23,6 +23,7 @@
     "typescript": "^5.1.6"
   },
   "scripts": {
+    "backfill:legacy": "cross-env TS_NODE_TRANSPILE_ONLY=1 ts-node scripts/backfill-legacy-ownership.ts",
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "start": "cross-env NODE_ENV=production nodemon app.ts",
     "dev": "cross-env NODE_ENV=test nodemon app.ts",
