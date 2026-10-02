@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "server": { "root": "server", "framework": "express" },
+    "ui": { "root": "ui", "framework": "create-react-app" }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "server" } },
+    { "source": "/external-api/(.*)", "destination": { "service": "server" } },
+    { "source": "/(.*)", "destination": { "service": "ui" } }
+  ]
+}
