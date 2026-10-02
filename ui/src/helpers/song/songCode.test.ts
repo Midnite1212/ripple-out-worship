@@ -47,12 +47,17 @@ describe('getNextSongCode', () => {
     await expect(getNextSongCode('A')).resolves.toBe('A11');
   });
 
-  it('matches codes case-insensitively and keeps the letter as passed', async () => {
+  it('matches codes case-insensitively', async () => {
     mockPages({ data: [{ code: 'a3' }, { code: 'A10' }, { code: 'A2' }], totalPages: 1 });
     await expect(getNextSongCode('A')).resolves.toBe('A11');
+  });
 
-    mockPages({ data: [{ code: 'A5' }], totalPages: 1 });
-    await expect(getNextSongCode('a')).resolves.toBe('a6');
+  it('uppercases a lowercase letter in the search and the result', async () => {
+    mockPages({ data: [{ code: 'A5' }, { code: 'a7' }], totalPages: 1 });
+    await expect(getNextSongCode('a')).resolves.toBe('A8');
+    expect(mockGet).toHaveBeenCalledWith('/api/songs/search', {
+      params: { code: 'A', sortBy: 'code', limit: 100, page: 1 },
+    });
   });
 
   it('ignores codes with a non-numeric suffix or another prefix', async () => {
@@ -75,8 +80,8 @@ describe('getNextSongCode', () => {
   });
 
   it('parses zero-padded suffixes as numbers', async () => {
-    mockPages({ data: [{ code: 'A007' }], totalPages: 1 });
-    await expect(getNextSongCode('A')).resolves.toBe('A8');
+    mockPages({ data: [{ code: 'A007' }, { code: 'A0' }, { code: 'A010' }], totalPages: 1 });
+    await expect(getNextSongCode('A')).resolves.toBe('A11');
   });
 
   it('pages through more than 100 codes and keeps the highest across pages', async () => {
@@ -112,9 +117,9 @@ describe('getNextSongCode', () => {
     expect(mockGet).toHaveBeenCalledTimes(50);
   });
 
-  it('matches every purely numeric code when the letter is empty', async () => {
-    mockPages({ data: [{ code: '12' }, { code: 'A30' }], totalPages: 1 });
-    await expect(getNextSongCode('')).resolves.toBe('13');
+  it('returns an empty code without searching when the letter is empty', async () => {
+    await expect(getNextSongCode('')).resolves.toBe('');
+    expect(mockGet).not.toHaveBeenCalled();
   });
 
   it('rejects when the request fails', async () => {
