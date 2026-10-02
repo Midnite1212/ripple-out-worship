@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { Types } from 'mongoose';
 import { describe, it } from 'node:test';
-import { isObjectIdString } from './validation';
+import { isObjectIdString, toObjectIdList } from './validation';
 
 describe('isObjectIdString', () => {
   it('accepts 24-character hex strings in either case', () => {
@@ -29,17 +28,42 @@ describe('isObjectIdString', () => {
     }
   });
 
-  it('rejects non-string values, including ObjectId instances', () => {
+  it('rejects non-string values, including objects that stringify to an id', () => {
     const values: unknown[] = [
       undefined,
       null,
       42,
       ['507f1f77bcf86cd799439011'],
       { id: '507f1f77bcf86cd799439011' },
-      new Types.ObjectId(),
+      { toString: () => '507f1f77bcf86cd799439011' },
     ];
     for (const value of values) {
       assert.equal(isObjectIdString(value), false);
+    }
+  });
+});
+
+describe('toObjectIdList', () => {
+  it('treats a missing value as an empty list and a single id as a one-item list', () => {
+    assert.deepEqual(toObjectIdList(undefined), []);
+    assert.deepEqual(toObjectIdList(null), []);
+    assert.deepEqual(toObjectIdList('507f1f77bcf86cd799439011'), ['507f1f77bcf86cd799439011']);
+  });
+
+  it('lowercases and de-duplicates ids, keeping first-seen order', () => {
+    assert.deepEqual(
+      toObjectIdList([
+        '507F1F77BCF86CD799439012',
+        '507f1f77bcf86cd799439011',
+        '507f1f77bcf86cd799439012',
+      ]),
+      ['507f1f77bcf86cd799439012', '507f1f77bcf86cd799439011']
+    );
+  });
+
+  it('rejects a list with any value that is not a 24-hex id', () => {
+    for (const value of [['507f1f77bcf86cd799439011', 'bad'], [1], 'bad', { id: 'x' }]) {
+      assert.equal(toObjectIdList(value), null, JSON.stringify(value));
     }
   });
 });

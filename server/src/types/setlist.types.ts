@@ -1,23 +1,41 @@
-import { Types } from 'mongoose';
-import { MongoInjectedFields } from './mongo.types';
+import { RecordFields } from './record.types';
+import { PublicSongRecord, SongRecord } from './song.types';
 
 type SetlistSongKey = {
-  songId: Types.ObjectId;
+  songId: string;
   key: string;
 };
 
-type SetlistSchema = {
+type SetlistRecord = RecordFields & {
   name: string;
-  date: Date;
-  createdBy: Types.ObjectId;
-  songs: Types.Array<Types.ObjectId>;
+  date: Date | null;
+  createdBy?: string;
+  songs: string[];
   songKeys: SetlistSongKey[];
-  lastUpdatedBy: Types.ObjectId;
-  publicLink: string;
-  groupIds: Types.Array<Types.ObjectId>;
+  lastUpdatedBy?: string;
+  publicLink: string | null;
+  groupIds: string[];
   isDeleted: boolean;
 };
 
-type SetlistDocument = SetlistSchema & MongoInjectedFields;
+type PopulatedSetlistRecord = Omit<SetlistRecord, 'songs'> & { songs: SongRecord[] };
 
-export { SetlistSchema, SetlistDocument, SetlistSongKey };
+type PublicSetlistRecord = Omit<
+  SetlistRecord,
+  'createdBy' | 'lastUpdatedBy' | 'groupIds' | 'songs'
+> & { songs: PublicSongRecord[] };
+
+type SetlistAccess = {
+  _id: string;
+  createdBy?: string;
+  groupIds: string[];
+  songs: string[];
+};
+
+export {
+  PopulatedSetlistRecord,
+  PublicSetlistRecord,
+  SetlistAccess,
+  SetlistRecord,
+  SetlistSongKey,
+};

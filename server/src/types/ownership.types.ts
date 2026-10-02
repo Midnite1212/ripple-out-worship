@@ -1,5 +1,4 @@
-import { Types } from 'mongoose';
-import { MongoInjectedFields } from './mongo.types';
+import { RecordFields } from './record.types';
 
 type OwnershipEntry = {
   id: string;
@@ -7,15 +6,17 @@ type OwnershipEntry = {
   createdAt: string;
 };
 
-type OwnershipSchema = {
+type StoredOwnershipEntry = Partial<OwnershipEntry>;
+
+type OwnershipRecord = RecordFields & {
   userId: string;
   fullName: string;
   accessType: string;
-  groupIds?: Types.DocumentArray<OwnershipEntry>;
-  setlistIds?: Types.DocumentArray<OwnershipEntry>;
+  groupIds: StoredOwnershipEntry[];
+  setlistIds: StoredOwnershipEntry[];
   isDeleted: boolean;
 };
 
-type OwnershipDocument = OwnershipSchema & MongoInjectedFields;
+type OwnershipSummary = Pick<OwnershipRecord, '_id' | 'userId' | 'fullName' | 'groupIds'>;
 
-export { OwnershipDocument, OwnershipEntry, OwnershipSchema };
+export { OwnershipEntry, OwnershipRecord, OwnershipSummary, StoredOwnershipEntry };

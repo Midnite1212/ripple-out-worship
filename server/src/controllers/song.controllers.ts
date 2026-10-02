@@ -1,32 +1,13 @@
 import { Request, RequestHandler, Response } from 'express';
-import { FilterQuery } from 'mongoose';
-import { Song } from '../models/song.model';
-import { SongSchema } from '../types/song.types';
+import { SONG_FIELDS, songRepository } from '../db/repositories/song.repository';
 import { pick } from '../utils/pick';
 import { sendError, sendResponse } from '../utils/response';
 import { isObjectIdString } from '../utils/validation';
 
-const SONG_FIELDS = [
-  'title',
-  'artist',
-  'themes',
-  'tempo',
-  'year',
-  'code',
-  'timeSignature',
-  'simplifiedChordLyrics',
-  'originalKey',
-  'recommendedKeys',
-  'chordLyrics',
-] as const;
-const SONG_VIEW_PROJECTION =
-  '_id title tempo originalKey themes artist year code isVerified isDeleted createdAt updatedAt simplifiedChordLyrics timeSignature';
 const MAX_SEARCH_LENGTH = 100;
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-
-const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const isSearchString = (value: unknown): value is string =>
   typeof value === 'string' && value.length <= MAX_SEARCH_LENGTH;
@@ -53,7 +34,7 @@ const createSong: RequestHandler = async (req: Request, res: Response): Promise<
   }
 
   try {
-    const song = await Song.create(toCreate);
+    const song = await songRepository.create(toCreate);
     sendResponse(res, 200, song);
   } catch (error: unknown) {
     sendError(res, error);
@@ -69,7 +50,7 @@ const getSong: RequestHandler = async (req: Request, res: Response): Promise<voi
         sendResponse(res, 400, 'Invalid song id');
         return;
       }
-      const song = await Song.findOne({ _id: id, isDeleted: false }).exec();
+      const song = await songRepository.findLiveById(id);
       if (song) {
         sendResponse(res, 200, song);
       } else {
@@ -78,7 +59,7 @@ const getSong: RequestHandler = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const songs = await Song.find({ isDeleted: false }).exec();
+    const songs = await songRepository.listLive();
     sendResponse(res, 200, songs);
   } catch (error: unknown) {
     sendError(res, error);
@@ -103,33 +84,16 @@ const searchSongs: RequestHandler = async (req: Request, res: Response): Promise
   const parsedPage = toPositiveInteger(page, DEFAULT_PAGE);
   const parsedLimit = Math.min(MAX_LIMIT, toPositiveInteger(limit, DEFAULT_LIMIT));
 
-  const query: FilterQuery<SongSchema> = { isDeleted: false };
-  const textSearchConditions: FilterQuery<SongSchema>[] = [];
-  if (keyword) {
-    textSearchConditions.push({ title: { $regex: escapeRegex(keyword), $options: 'i' } });
-  }
-  if (code) {
-    textSearchConditions.push({ code: { $regex: escapeRegex(code), $options: 'i' } });
-  }
-  if (textSearchConditions.length > 0) {
-    query.$or = textSearchConditions;
-  }
-  if (tempoArray.length > 0) {
-    query.tempo = { $in: tempoArray };
-  }
-  if (themesArray.length > 0) {
-    query.themes = { $in: themesArray };
-  }
-
-  const sortField = sortBy === 'code' ? 'code' : 'title';
-
   try {
-    const songs = await Song.find(query)
-      .sort(sortField)
-      .skip((parsedPage - 1) * parsedLimit)
-      .limit(parsedLimit)
-      .exec();
-    const totalCount = await Song.countDocuments(query).exec();
+    const { songs, totalCount } = await songRepository.search({
+      keyword: isSearchString(keyword) ? keyword : '',
+      code: isSearchString(code) ? code : '',
+      tempo: tempoArray,
+      themes: themesArray,
+      sortBy: sortBy === 'code' ? 'code' : 'title',
+      offset: (parsedPage - 1) * parsedLimit,
+      limit: parsedLimit,
+    });
     sendResponse(res, 200, {
       data: songs,
       totalCount,
@@ -143,7 +107,7 @@ const searchSongs: RequestHandler = async (req: Request, res: Response): Promise
 
 const getSongView: RequestHandler = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const songs = await Song.find({ isDeleted: false }).select(SONG_VIEW_PROJECTION).exec();
+    const songs = await songRepository.listLiveView();
     sendResponse(res, 200, songs);
   } catch (error: unknown) {
     sendError(res, error);
@@ -160,11 +124,7 @@ const updateSong: RequestHandler = async (req: Request, res: Response): Promise<
   }
 
   try {
-    const song = await Song.findOneAndUpdate(
-      { _id: id, isDeleted: false },
-      { $set: toUpdate },
-      { new: true, runValidators: true }
-    );
+    const song = await songRepository.updateLive(id, toUpdate);
 
     if (song) {
       sendResponse(res, 200, song);
@@ -185,12 +145,7 @@ const deleteSong: RequestHandler = async (req: Request, res: Response): Promise<
   }
 
   try {
-    const result = await Song.updateOne(
-      { _id: id, isDeleted: false },
-      { $set: { isDeleted: true } }
-    );
-
-    if (result.matchedCount > 0) {
+    if (await songRepository.softDelete(id)) {
       sendResponse(res, 200, 'Song successfully deleted');
     } else {
       sendResponse(res, 404, 'Song not found');
