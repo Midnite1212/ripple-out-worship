@@ -1,104 +1,103 @@
 import { Request, RequestHandler, Response } from 'express';
 import { Group } from '../models/group.model';
-import { GroupDocument } from '../types/group.types';
+import { pick } from '../utils/pick';
+import { sendError, sendResponse } from '../utils/response';
+import { isObjectIdString } from '../utils/validation';
 
-const sendResponse = (
-  res: Response,
-  statusCode: number,
-  payload: GroupDocument[] | GroupDocument | string
-) => {
-  return res.status(statusCode).json(payload);
-};
+const GROUP_FIELDS = ['groupName', 'setlistIds'] as const;
 
-const createGroup: RequestHandler = async (req: Request, res: Response) => {
-  const { ...toCreate }: GroupDocument = req.body;
+const createGroup: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+  const toCreate = pick(req.body, GROUP_FIELDS);
 
-  // Check if any fields are present. MongoDB will throw an error
-  // if no fields are present or if a required field is missing
-  if (Object.keys(toCreate).length > 0) {
-    try {
-      const data: GroupDocument = await Group.create(toCreate);
-
-      if (data) {
-        sendResponse(res, 200, data);
-      } else {
-        sendResponse(res, 404, 'Group not created');
-      }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
-  } else {
+  if (Object.keys(toCreate).length === 0) {
     sendResponse(res, 400, 'Missing required fields');
+    return;
   }
-};
-
-const getGroup: RequestHandler = async (req: Request, res: Response) => {
-  const groupId = req.query.id;
 
   try {
-    if (groupId) {
-      const data: GroupDocument | null = await Group.findOne({
-        _id: groupId,
-        isDeleted: false,
-      });
-
-      if (data) {
-        return sendResponse(res, 200, data);
-      } else {
-        return sendResponse(res, 404, 'Group not found');
-      }
-    }
-    // If no groupId, get all groups
-    const data: GroupDocument[] = await Group.find({ isDeleted: false });
-
-    if (data.length > 0) {
-      return sendResponse(res, 200, data);
-    } else {
-      return sendResponse(res, 404, 'No groups found');
-    }
-  } catch (error: any) {
-    return sendResponse(res, 500, error?.message);
+    const group = await Group.create(toCreate);
+    sendResponse(res, 200, group);
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 
-const updateGroup: RequestHandler = async (req: Request, res: Response) => {
-  const { id: groupId, ...toUpdate } = req.body;
+const getGroup: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.query;
 
-  // Update group by id with fields to update
-  if (groupId && Object.keys(toUpdate).length > 0) {
-    try {
-      const updatedGroup = await Group.updateOne(
-        { _id: groupId, isDeleted: false },
-        { $set: toUpdate }
-      );
-
-      if (updatedGroup) {
-        sendResponse(res, 200, 'Group updated');
-      } else {
-        sendResponse(res, 404, 'Group not updated');
+  try {
+    if (id !== undefined) {
+      if (!isObjectIdString(id)) {
+        sendResponse(res, 400, 'Invalid group id');
+        return;
       }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
+      const group = await Group.findOne({ _id: id, isDeleted: false }).exec();
+      if (group) {
+        sendResponse(res, 200, group);
+      } else {
+        sendResponse(res, 404, 'Group not found');
+      }
+      return;
     }
-  } else {
+
+    const groups = await Group.find({ isDeleted: false }).exec();
+    if (groups.length > 0) {
+      sendResponse(res, 200, groups);
+    } else {
+      sendResponse(res, 404, 'No groups found');
+    }
+  } catch (error: unknown) {
+    sendError(res, error);
+  }
+};
+
+const updateGroup: RequestHandler = async (req: Request, res: Response): Promise<void> => {
+  const id: unknown = req.body?.id;
+  const toUpdate = pick(req.body, GROUP_FIELDS);
+
+  if (!isObjectIdString(id) || Object.keys(toUpdate).length === 0) {
     sendResponse(res, 400, 'Missing required fields');
+    return;
+  }
+
+  try {
+    const group = await Group.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      { $set: toUpdate },
+      { new: true, runValidators: true }
+    );
+
+    if (group) {
+      sendResponse(res, 200, group);
+    } else {
+      sendResponse(res, 404, 'Group not found');
+    }
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 
 const deleteGroup: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const groupId = req.body.params.id;
+  const id: unknown = req.body?.params?.id ?? req.body?.id;
 
-  // Soft delete group by id
-  if (groupId) {
-    try {
-      await Group.updateOne({ _id: groupId, isDeleted: false }, { $set: { isDeleted: true } });
-
-      sendResponse(res, 200, 'Group deleted');
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
-  } else {
+  if (!isObjectIdString(id)) {
     sendResponse(res, 400, 'Missing required fields');
+    return;
+  }
+
+  try {
+    const result = await Group.updateOne(
+      { _id: id, isDeleted: false },
+      { $set: { isDeleted: true } }
+    );
+
+    if (result.matchedCount > 0) {
+      sendResponse(res, 200, 'Group deleted');
+    } else {
+      sendResponse(res, 404, 'Group not found');
+    }
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 

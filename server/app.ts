@@ -5,12 +5,13 @@ import * as path from 'path';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { errorHandler } from './src/utils/response';
 
 dotenv.config();
 
 const app = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT) : 1338; // development port is 1338
-const isDevelopment = process.env.NODE_ENV === 'test';
+const isDevelopment = process.env.NODE_ENV?.trim() === 'test';
 
 app.use(
   cors({
@@ -29,7 +30,7 @@ app.use(
     pathRewrite: {
       '^/external-api': '/api',
     },
-    logLevel: 'debug',
+    logLevel: 'warn',
   })
 );
 app.use(express.json());
@@ -42,6 +43,7 @@ if (!isDevelopment) {
     res.sendFile(path.join(__dirname + '/client/index.html'));
   });
 }
+app.use(errorHandler);
 
 // Starts the server after connecting to the database
 connectToDB()
@@ -50,6 +52,7 @@ connectToDB()
       console.log(`Server is running on port ${port}.`);
     });
   })
-  .catch(() => {
-    console.log('Server failed to start.');
+  .catch((error: unknown) => {
+    console.error('Server failed to start.', error);
+    process.exit(1);
   });

@@ -1,10 +1,16 @@
 export type AccessType = 'ministry' | 't3ch' | 'tc' | 'admin';
 
-export interface PermissionConfig {
-  requiresAuth: boolean;
-  allowedAccessTypes?: AccessType[];
-  description?: string;
-}
+export type PermissionConfig =
+  | {
+      requiresAuth: true;
+      allowedAccessTypes?: AccessType[];
+      description?: string;
+    }
+  | {
+      requiresAuth: false;
+      optionalAuth?: boolean;
+      description?: string;
+    };
 
 // Centralized permissions configuration
 /**
@@ -62,6 +68,7 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionConfig> = {
   },
   'GET /setlists/get': {
     requiresAuth: false,
+    optionalAuth: true,
     description: 'View setlists',
   },
   'PUT /setlists/update': {
@@ -81,7 +88,6 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionConfig> = {
   },
   'GET /songs/get': {
     requiresAuth: false,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
     description: 'View songs (admin view)',
   },
   'GET /songs/get-view': {

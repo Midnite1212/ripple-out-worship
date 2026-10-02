@@ -1,20 +1,20 @@
 import {
   createSong,
+  deleteSong,
   getSong,
   getSongView,
-  updateSong,
-  deleteSong,
   searchSongs,
+  updateSong,
 } from '../controllers/song.controllers';
 import { createPermissionRouter } from '../policies';
 
-const router = createPermissionRouter('/songs');
+const router = createPermissionRouter();
 
-router.post('/create', createSong);
-router.get('/get', getSong);
-router.get('/get-view', getSongView);
-router.put('/update', updateSong);
-router.put('/delete', deleteSong);
-router.get('/search', searchSongs);
+router.post('/songs/create', createSong);
+router.get('/songs/get', getSong);
+router.get('/songs/get-view', getSongView);
+router.put('/songs/update', updateSong);
+router.put('/songs/delete', deleteSong);
+router.get('/songs/search', searchSongs);
 
 export default router.getRouter();

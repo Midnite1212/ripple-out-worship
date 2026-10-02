@@ -1,4 +1,4 @@
-import { Schema, model, models, Types } from 'mongoose';
+import { Model, Schema, Types, model, models } from 'mongoose';
 import { GroupSchema } from '../types/group.types';
 
 const groupSchema = new Schema<GroupSchema>(
@@ -14,6 +14,7 @@ const groupSchema = new Schema<GroupSchema>(
   }
 );
 
-const Group = models.Group || model<GroupSchema>('Group', groupSchema);
+const Group =
+  (models.Group as Model<GroupSchema> | undefined) ?? model<GroupSchema>('Group', groupSchema);
 
 export { Group };

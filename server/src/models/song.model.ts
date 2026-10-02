@@ -1,4 +1,4 @@
-import { Schema, model, models } from 'mongoose';
+import { Model, Schema, model, models } from 'mongoose';
 import { SongSchema } from '../types/song.types';
 
 const songSchema = new Schema<SongSchema>(
@@ -24,6 +24,7 @@ const songSchema = new Schema<SongSchema>(
   }
 );
 
-const Song = models.Song || model<SongSchema>('Song', songSchema);
+const Song =
+  (models.Song as Model<SongSchema> | undefined) ?? model<SongSchema>('Song', songSchema);
 
 export { Song };

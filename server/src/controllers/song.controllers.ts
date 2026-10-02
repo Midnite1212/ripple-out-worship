@@ -1,183 +1,199 @@
 import { Request, RequestHandler, Response } from 'express';
+import { FilterQuery } from 'mongoose';
 import { Song } from '../models/song.model';
-import { SongDocument } from '../types/song.types';
+import { SongSchema } from '../types/song.types';
+import { pick } from '../utils/pick';
+import { sendError, sendResponse } from '../utils/response';
+import { isObjectIdString } from '../utils/validation';
 
-const sendResponse = (
-  res: Response,
-  statusCode: number,
-  payload: SongDocument[] | SongDocument | string
-) => {
-  return res.status(statusCode).json(payload);
+const SONG_FIELDS = [
+  'title',
+  'artist',
+  'themes',
+  'tempo',
+  'year',
+  'code',
+  'timeSignature',
+  'simplifiedChordLyrics',
+  'originalKey',
+  'recommendedKeys',
+  'chordLyrics',
+] as const;
+const SONG_VIEW_PROJECTION =
+  '_id title tempo originalKey themes artist year code isVerified isDeleted createdAt updatedAt simplifiedChordLyrics timeSignature';
+const MAX_SEARCH_LENGTH = 100;
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const isSearchString = (value: unknown): value is string =>
+  typeof value === 'string' && value.length <= MAX_SEARCH_LENGTH;
+
+const toSearchArray = (value: unknown): string[] | null => {
+  if (value === undefined || value === '') return [];
+  if (isSearchString(value)) return [value];
+  if (Array.isArray(value) && value.every(isSearchString)) return value;
+  return null;
 };
 
+const toPositiveInteger = (value: unknown, fallback: number): number =>
+  Math.max(1, Math.floor(Number(value) || fallback));
+
 const createSong: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const { ...toCreate } = req.body;
+  const toCreate = pick(req.body, SONG_FIELDS);
 
-  if (Object.keys(toCreate).length > 0) {
-    try {
-      const data: SongDocument = await Song.create(toCreate);
-
-      if (data) {
-        sendResponse(res, 200, data);
-      } else {
-        sendResponse(res, 404, 'Song not created');
-      }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
-  } else {
+  if (Object.keys(toCreate).length === 0) {
     sendResponse(res, 400, 'Missing required fields');
+    return;
+  }
+
+  try {
+    const song = await Song.create(toCreate);
+    sendResponse(res, 200, song);
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 
 const getSong: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const { id: songId } = req.query;
+  const { id } = req.query;
 
-  if (songId) {
-    try {
-      const data: SongDocument | null = await Song.findOne({
-        _id: songId,
-        isDeleted: false,
-      }).exec();
-
-      if (data) {
-        sendResponse(res, 200, data);
+  try {
+    if (id !== undefined) {
+      if (!isObjectIdString(id)) {
+        sendResponse(res, 400, 'Invalid song id');
+        return;
+      }
+      const song = await Song.findOne({ _id: id, isDeleted: false }).exec();
+      if (song) {
+        sendResponse(res, 200, song);
       } else {
         sendResponse(res, 404, 'Song not found');
       }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
+      return;
     }
-  } else {
-    try {
-      const data: SongDocument[] = await Song.find({ isDeleted: false }).exec();
 
-      if (data) {
-        sendResponse(res, 200, data);
-      } else {
-        sendResponse(res, 404, 'Songs not found');
-      }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
+    const songs = await Song.find({ isDeleted: false }).exec();
+    sendResponse(res, 200, songs);
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
+
 const searchSongs: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const { keyword, code, tempo, themes, sortBy, page = 1, limit = 20 } = req.query;
+  const { keyword, code, tempo, themes, sortBy, page, limit } = req.query;
 
-  const tempoArray = Array.isArray(tempo) ? tempo : [tempo].filter(Boolean);
-  const themesArray = Array.isArray(themes) ? themes : [themes].filter(Boolean);
+  const tempoArray = toSearchArray(tempo);
+  const themesArray = toSearchArray(themes);
+  if (
+    (keyword !== undefined && !isSearchString(keyword)) ||
+    (code !== undefined && !isSearchString(code)) ||
+    tempoArray === null ||
+    themesArray === null
+  ) {
+    sendResponse(res, 400, 'Invalid search parameters');
+    return;
+  }
 
-  const parsedPage = Math.max(1, Number(page)); // Ensure page is at least 1
-  const parsedLimit = Math.max(1, Math.min(100, Number(limit))); // Limit max limit for safety
+  const parsedPage = toPositiveInteger(page, DEFAULT_PAGE);
+  const parsedLimit = Math.min(MAX_LIMIT, toPositiveInteger(limit, DEFAULT_LIMIT));
+
+  const query: FilterQuery<SongSchema> = { isDeleted: false };
+  const textSearchConditions: FilterQuery<SongSchema>[] = [];
+  if (keyword) {
+    textSearchConditions.push({ title: { $regex: escapeRegex(keyword), $options: 'i' } });
+  }
+  if (code) {
+    textSearchConditions.push({ code: { $regex: escapeRegex(code), $options: 'i' } });
+  }
+  if (textSearchConditions.length > 0) {
+    query.$or = textSearchConditions;
+  }
+  if (tempoArray.length > 0) {
+    query.tempo = { $in: tempoArray };
+  }
+  if (themesArray.length > 0) {
+    query.themes = { $in: themesArray };
+  }
+
+  const sortField = sortBy === 'code' ? 'code' : 'title';
 
   try {
-    const query: any = {
-      isDeleted: false,
-    };
-
-    const textSearchConditions = [];
-    if (keyword) {
-      textSearchConditions.push({ title: { $regex: keyword, $options: 'i' } });
-    }
-    if (code) {
-      textSearchConditions.push({ code: { $regex: code, $options: 'i' } });
-    }
-
-    if (textSearchConditions.length > 0) {
-      query.$or = textSearchConditions;
-    }
-    if (tempoArray.length > 0) {
-      query.tempo = { $in: tempoArray };
-    }
-    if (themesArray.length > 0) {
-      query.themes = { $in: themesArray };
-    }
-
-    // Handle sorting
-    let sortOptions = {};
-    if (sortBy === 'code') {
-      sortOptions = { code: 1 };
-    } else {
-      sortOptions = { title: 1 };
-    }
-
-    const skip = (parsedPage - 1) * parsedLimit;
-    const data: SongDocument[] = await Song.find(query)
-      .sort(sortOptions)
-      .skip(skip)
+    const songs = await Song.find(query)
+      .sort(sortField)
+      .skip((parsedPage - 1) * parsedLimit)
       .limit(parsedLimit)
       .exec();
     const totalCount = await Song.countDocuments(query).exec();
-    res.status(200).json({
-      data,
+    sendResponse(res, 200, {
+      data: songs,
       totalCount,
       currentPage: parsedPage,
       totalPages: Math.ceil(totalCount / parsedLimit),
     });
-  } catch (error: any) {
-    sendResponse(res, 500, error?.message);
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 
-const getSongView: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const { ...filter } = req.body;
-  if (Object.keys(filter).length > 0) {
-    //for future features, can share link with pre filtered songs, also needs to define req lol
-  } else {
-    try {
-      const data: SongDocument[] = await Song.find({ isDeleted: false })
-        .select(
-          '_id title tempo originalKey themes artist year code isVerified isDeleted createdAt updatedAt simplifiedChordLyrics timeSignature'
-        )
-        .exec();
-
-      if (data) {
-        sendResponse(res, 200, data);
-      } else {
-        sendResponse(res, 404, 'Songs not found');
-      }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
+const getSongView: RequestHandler = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const songs = await Song.find({ isDeleted: false }).select(SONG_VIEW_PROJECTION).exec();
+    sendResponse(res, 200, songs);
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 
 const updateSong: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const { id: songId, ...toUpdate } = req.body;
+  const id: unknown = req.body?.id;
+  const toUpdate = pick(req.body, SONG_FIELDS);
 
-  if (songId && Object.keys(toUpdate).length > 0) {
-    try {
-      const updatedSong = await Song.updateOne(
-        { _id: songId, isDeleted: false },
-        { $set: toUpdate }
-      );
-
-      if (updatedSong) {
-        sendResponse(res, 200, 'Song updated');
-      } else {
-        sendResponse(res, 404, 'Song not updated');
-      }
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
-  } else {
+  if (!isObjectIdString(id) || Object.keys(toUpdate).length === 0) {
     sendResponse(res, 400, 'Missing required fields');
+    return;
+  }
+
+  try {
+    const result = await Song.updateOne(
+      { _id: id, isDeleted: false },
+      { $set: toUpdate },
+      { runValidators: true }
+    );
+
+    if (result.matchedCount > 0) {
+      sendResponse(res, 200, 'Song updated');
+    } else {
+      sendResponse(res, 404, 'Song not found');
+    }
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 
 const deleteSong: RequestHandler = async (req: Request, res: Response): Promise<void> => {
-  const { id: songId } = req.body;
+  const id: unknown = req.body?.id;
 
-  if (songId) {
-    try {
-      await Song.updateOne({ _id: songId, isDeleted: false }, { $set: { isDeleted: true } });
-      sendResponse(res, 200, 'Song successfully deleted');
-    } catch (error: any) {
-      sendResponse(res, 500, error?.message);
-    }
-  } else {
+  if (!isObjectIdString(id)) {
     sendResponse(res, 400, 'Missing required fields');
+    return;
+  }
+
+  try {
+    const result = await Song.updateOne(
+      { _id: id, isDeleted: false },
+      { $set: { isDeleted: true } }
+    );
+
+    if (result.matchedCount > 0) {
+      sendResponse(res, 200, 'Song successfully deleted');
+    } else {
+      sendResponse(res, 404, 'Song not found');
+    }
+  } catch (error: unknown) {
+    sendError(res, error);
   }
 };
 

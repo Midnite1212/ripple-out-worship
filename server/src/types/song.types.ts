@@ -21,9 +21,4 @@ type SongSchema = {
 
 type SongDocument = SongSchema & MongoInjectedFields;
 
-type SongSetlistSchema = SongDocument & {
-  key: string;
-  sequence: number;
-};
-
-export { SongSchema, SongDocument, SongSetlistSchema };
+export { SongDocument, SongSchema };
