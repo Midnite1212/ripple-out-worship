@@ -11,7 +11,7 @@ on:
         options:
           - uat
           - prod
-          
+
 
 jobs:
   build-and-upload:
@@ -20,27 +20,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Git to branch: ${{ github.ref_name }}"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: "${{ github.ref_name }}"
       - name: "Setup Node"
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: |
+            yarn.lock
+            server/yarn.lock
+            ui/yarn.lock
       - name: "Install Dependencies in root folder"
-        run: yarn install
+        run: yarn install --frozen-lockfile
       - name: "Install Dependencies in server/ folder"
         run: |
-          cd server && yarn install
+          cd server && yarn install --frozen-lockfile
       - name: "Install Dependencies in ui/ folder"
         run: |
-          cd ui && yarn install
+          cd ui && yarn install --frozen-lockfile
       - name: "Create ui/ .env"
+        env:
+          UI_ENV: ${{ secrets.UI_ENV }}
         run: |
-          echo "${{ secrets.UI_ENV }}" > ui/.env
-      - name: "Create server /.env"
+          printf '%s' "$UI_ENV" > ui/.env
+      - name: "Create server/ .env"
+        env:
+          SERVER_ENV: ${{ secrets.SERVER_ENV }}
         run: |
-          echo "${{ secrets.SERVER_ENV }}" > server/.env
+          printf '%s' "$SERVER_ENV" > server/.env
       - name: "Build ui/ folder"
         run: |
           cd ui && yarn run build
@@ -60,15 +69,24 @@ jobs:
         with:
           name: my_artifact
           path: release.zip
+          retention-days: 1
       - name: Inspect artifact
         run: |
           ls -l
           file release.zip
       - name: "Trigger Deploy ${{ github.event.inputs.deploy_env }} Workflow"
+        env:
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+          DEPLOY_ENV: ${{ github.event.inputs.deploy_env }}
         run: |
-          curl \
+          jq -n --arg ref "$REF_NAME" --arg runId "$RUN_ID" --arg env "$DEPLOY_ENV" \
+            '{ref: $ref, inputs: {runId: $runId, env: $env}}' |
+          curl --fail-with-body \
             -X POST \
             -H "Accept: application/vnd.github.everest-preview+json" \
-            -H "Authorization: Bearer ${{ secrets.AUTH_TOKEN }}" \
-            https://api.github.com/repos/hmcc-global/ripple-out-worship/actions/workflows/deploy-and-delete-workflow.yml/dispatches \
-            -d '{"ref":"${{ github.ref_name }}", "inputs": {"runId": "${{ github.run_id }}", "env": "${{ github.event.inputs.deploy_env }}"}}'
+            -H "Authorization: Bearer $AUTH_TOKEN" \
+            "https://api.github.com/repos/$REPOSITORY/actions/workflows/deploy-and-delete-workflow.yml/dispatches" \
+            -d @-
