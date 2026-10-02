@@ -31,6 +31,7 @@
     "db:migrate": "drizzle-kit migrate",
     "start": "cross-env NODE_ENV=production nodemon app.ts",
     "dev": "cross-env NODE_ENV=test nodemon app.ts",
+    "import:mongo": "cross-env TS_NODE_TRANSPILE_ONLY=1 ts-node scripts/import-mongo.ts",
     "test": "cross-env TS_NODE_TRANSPILE_ONLY=1 node --test --require ts-node/register 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit"
   }
