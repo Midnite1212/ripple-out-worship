@@ -33,6 +33,7 @@ import {
   StyledButton,
 } from './SetlistEditor.styles';
 import { logRequestError } from '../../helpers/global';
+import { requestErrorMessage } from '../../helpers/setlist/requestErrorMessage';
 
 const SetlistEditorContainer: FC<SetlistEditorProps> = () => {
   const navigate = useNavigate();
@@ -215,7 +216,9 @@ const SetlistEditorContainer: FC<SetlistEditorProps> = () => {
       }
     } catch (error) {
       logRequestError('Error saving setlist:', error);
-      setInvalidSetlist('Could not save this setlist. Please try again.');
+      setInvalidSetlist(
+        requestErrorMessage(error, 'Could not save this setlist. Please try again.')
+      );
       setSuccessSnackbarOpen(false);
     }
   };

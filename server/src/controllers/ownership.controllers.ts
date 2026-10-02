@@ -1,12 +1,44 @@
 import { RequestHandler, Response } from 'express';
 import { Ownership } from '../models/ownership.model';
+import { Setlist } from '../models/setlist.model';
 import { AuthenticatedRequest } from '../policies/permissionMiddleware';
+import {
+  CallerOwnership,
+  canEditSetlist,
+  ownedEntryIds,
+  sendForbidden,
+} from '../utils/authorization';
 import { pick } from '../utils/pick';
 import { sendError, sendResponse } from '../utils/response';
 import { isObjectIdString } from '../utils/validation';
+import { TokenUser } from '../utils/verify-jwt';
 
-const OWNERSHIP_FIELDS = ['setlistIds', 'groupIds'] as const;
+const OWNERSHIP_FIELDS = ['setlistIds'] as const;
 const OWNERSHIP_LIST_PROJECTION = 'userId fullName groupIds';
+
+const parseEntryIds = (value: unknown): string[] | null => {
+  if (!Array.isArray(value)) return null;
+  const ids: unknown[] = value.map((entry: unknown) =>
+    typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'id') : undefined
+  );
+  return ids.every(isObjectIdString) ? ids : null;
+};
+
+const canAddSetlists = async (
+  user: TokenUser,
+  setlistIds: string[],
+  ownership: CallerOwnership
+): Promise<boolean> => {
+  const uniqueIds = Array.from(new Set(setlistIds));
+  const setlists = await Setlist.find(
+    { _id: { $in: uniqueIds }, isDeleted: false },
+    'createdBy groupIds'
+  ).exec();
+  return (
+    setlists.length === uniqueIds.length &&
+    setlists.every((setlist) => canEditSetlist(user, setlist, ownership))
+  );
+};
 
 const createOwnership: RequestHandler = async (
   req: AuthenticatedRequest,
@@ -77,6 +109,11 @@ const updateOwnership: RequestHandler = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
+  if (!req.user) {
+    sendResponse(res, 401, 'Unauthorized');
+    return;
+  }
+
   const id: unknown = req.body?._id;
   const toUpdate = pick(req.body, OWNERSHIP_FIELDS);
 
@@ -85,9 +122,38 @@ const updateOwnership: RequestHandler = async (
     return;
   }
 
+  const setlistIds = parseEntryIds(toUpdate.setlistIds);
+  if (!setlistIds) {
+    sendResponse(res, 400, 'Invalid setlist ids');
+    return;
+  }
+
   try {
-    const ownership = await Ownership.findOneAndUpdate(
+    const existing = await Ownership.findOne(
       { _id: id, isDeleted: false },
+      'userId groupIds setlistIds'
+    ).exec();
+    if (!existing) {
+      sendResponse(res, 404, 'Ownership not found');
+      return;
+    }
+    if (existing.userId !== req.user.id) {
+      sendForbidden(res);
+      return;
+    }
+
+    const storedSetlistIds = new Set(ownedEntryIds(existing.setlistIds));
+    const addedSetlistIds = setlistIds.filter((setlistId) => !storedSetlistIds.has(setlistId));
+    if (
+      addedSetlistIds.length > 0 &&
+      !(await canAddSetlists(req.user, addedSetlistIds, existing))
+    ) {
+      sendForbidden(res);
+      return;
+    }
+
+    const ownership = await Ownership.findOneAndUpdate(
+      { _id: id, userId: req.user.id, isDeleted: false },
       { $set: toUpdate },
       { new: true, runValidators: true }
     );
@@ -111,13 +177,13 @@ const deleteOwnership: RequestHandler = async (
     return;
   }
 
-  const userId: unknown = req.body?.params?.userId ?? req.body?.userId;
+  const userId: unknown = [req.body?.params?.userId, req.body?.userId].find(isObjectIdString);
   if (!isObjectIdString(userId)) {
     sendResponse(res, 400, 'Missing required fields');
     return;
   }
   if (userId !== req.user.id) {
-    sendResponse(res, 403, 'Forbidden');
+    sendForbidden(res);
     return;
   }
 

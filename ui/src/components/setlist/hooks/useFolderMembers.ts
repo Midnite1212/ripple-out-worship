@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { customAxios as axios } from '../../custom/customAxios';
-import { GroupOwnership, Ownership } from '../../../types/ownership.types';
+import { Ownership } from '../../../types/ownership.types';
 import { logRequestError } from '../../../helpers/global';
+import { requestErrorMessage } from '../../../helpers/setlist/requestErrorMessage';
 
 export type OwnershipRecord = Ownership & { _id: string };
 
@@ -11,28 +12,22 @@ type UseFolderMembersParams = {
   mode: 'edit' | 'create';
   openDrawer: boolean;
   folderId?: string;
-  folderName?: string;
-  folderCreated?: string;
   ownership: Ownership;
   showSnackbar: (message: string, severity?: SnackbarSeverity) => void;
 };
 
-const addGroupToMember = async (member: OwnershipRecord | undefined, group: GroupOwnership) => {
-  if (!member || member.groupIds?.some(({ id }) => id === group.id)) return null;
-  const { data, status } = await axios.put('/api/ownerships/update', {
-    _id: member._id,
-    userId: member.userId,
-    groupIds: [...(member.groupIds ?? []), group],
-  });
-  return status === 200 ? data : null;
+type GroupMembersChange = {
+  groupId: string;
+  add?: string[];
+  remove?: string[];
 };
+
+const updateGroupMembers = (change: GroupMembersChange) => axios.put('/api/groups/members', change);
 
 const useFolderMembers = ({
   mode,
   openDrawer,
   folderId,
-  folderName,
-  folderCreated,
   ownership,
   showSnackbar,
 }: UseFolderMembersParams) => {
@@ -73,16 +68,11 @@ const useFolderMembers = ({
   }, [folderId, mode, showSnackbar]);
 
   const addMembersToGroup = useCallback(
-    (group: GroupOwnership) =>
-      Promise.all(
-        addedPeople.map((userId) =>
-          addGroupToMember(
-            allPeople.find((person) => person.userId === userId),
-            group
-          )
-        )
-      ),
-    [addedPeople, allPeople]
+    async (groupId: string) => {
+      if (addedPeople.length === 0) return;
+      await updateGroupMembers({ groupId, add: addedPeople });
+    },
+    [addedPeople]
   );
 
   const handleSaveMembers = useCallback(async () => {
@@ -90,27 +80,14 @@ const useFolderMembers = ({
       return;
     }
     try {
-      const currentGroup: GroupOwnership = {
-        id: folderId,
-        name: folderName ?? '',
-        createdAt: folderCreated ?? Date.now().toString(),
-      };
-      await addMembersToGroup(currentGroup);
+      await addMembersToGroup(folderId);
       showSnackbar('Members successfully added to folder!');
       getPeople();
     } catch (error) {
-      showSnackbar('Failed to add members to folder', 'error');
+      showSnackbar(requestErrorMessage(error, 'Failed to add members to folder'), 'error');
       logRequestError('Error saving members:', error);
     }
-  }, [
-    addMembersToGroup,
-    addedPeople,
-    folderCreated,
-    folderId,
-    folderName,
-    getPeople,
-    showSnackbar,
-  ]);
+  }, [addMembersToGroup, addedPeople, folderId, getPeople, showSnackbar]);
 
   const filterKeyword = useMemo(() => searchString.trim().toLowerCase(), [searchString]);
   const memoizedFilteredPeople = useMemo(() => {
@@ -135,17 +112,8 @@ const useFolderMembers = ({
       }
       try {
         const personToRemove = allPeople.find((person) => person.userId === id);
-        const { data, status } = await axios.get<OwnershipRecord>('/api/ownerships/get', {
-          params: {
-            userId: id,
-          },
-        });
-        if (status === 200 && data?._id) {
-          await axios.put('/api/ownerships/update', {
-            _id: data._id,
-            userId: data.userId,
-            groupIds: (data.groupIds ?? []).filter((group) => group.id !== folderId),
-          });
+        const { status } = await updateGroupMembers({ groupId: folderId, remove: [id] });
+        if (status === 200) {
           setAddedPeople((prev) => prev.filter((add) => add !== id));
           setAllPeople((prev) =>
             prev.map((person) =>
@@ -160,7 +128,7 @@ const useFolderMembers = ({
           showSnackbar(`${personToRemove?.fullName || 'Member'} removed from folder`);
         }
       } catch (error) {
-        showSnackbar('Failed to remove member from folder', 'error');
+        showSnackbar(requestErrorMessage(error, 'Failed to remove member from folder'), 'error');
         logRequestError('Error removing person:', error);
       }
     },

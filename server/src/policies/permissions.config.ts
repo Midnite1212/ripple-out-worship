@@ -56,6 +56,10 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionConfig> = {
     requiresAuth: true,
     description: 'Update group',
   },
+  'PUT /groups/members': {
+    requiresAuth: true,
+    description: 'Add or remove group members',
+  },
   'PUT /groups/delete': {
     requiresAuth: true,
     description: 'Delete group',

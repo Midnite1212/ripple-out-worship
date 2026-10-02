@@ -4,6 +4,7 @@ import { isAxiosError } from 'axios';
 import { customAxios as axios } from '../../custom/customAxios';
 import { Setlist } from '../../../types/setlist.types';
 import { logRequestError } from '../../../helpers/global';
+import { requestErrorMessage } from '../../../helpers/setlist/requestErrorMessage';
 
 const useSetlistActions = (
   setlist: Setlist,
@@ -47,7 +48,7 @@ const useSetlistActions = (
       const message =
         isAxiosError(error) && error.response?.status === 404
           ? 'Setlist not found or already deleted'
-          : 'Failed to delete setlist';
+          : requestErrorMessage(error, 'Failed to delete setlist');
       handleSnackbarOpen(message);
       return false;
     }

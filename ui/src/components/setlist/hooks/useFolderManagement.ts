@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { customAxios as axios } from '../../custom/customAxios';
 import { Setlist, SetlistFolder } from '../../../types/setlist.types';
 import { logRequestError } from '../../../helpers/global';
+import { requestErrorMessage } from '../../../helpers/setlist/requestErrorMessage';
 
 const useFolderManagement = (
   setlist: Setlist,
@@ -86,7 +87,7 @@ const useFolderManagement = (
         throw new Error('Some folder updates failed');
       }
     } catch (error) {
-      handleSnackbarOpen('Could not update folders. Please try again.');
+      handleSnackbarOpen(requestErrorMessage(error, 'Could not update folders. Please try again.'));
       logRequestError('Error updating folders:', error);
       return false;
     }

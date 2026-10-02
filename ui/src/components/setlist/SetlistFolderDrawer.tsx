@@ -15,6 +15,7 @@ import Close from '@mui/icons-material/Close';
 import Folder from '@mui/icons-material/Folder';
 import { AxiosResponse } from 'axios';
 import dayjs from 'dayjs';
+import { useDispatch } from 'react-redux';
 import { customAxios as axios } from '../custom/customAxios';
 import ConfirmationDialog from '../custom/ConfirmationDialog';
 import HeaderWithIcon from '../custom/HeaderWithIcon';
@@ -24,9 +25,11 @@ import SetlistFolderMembersSection from './SetlistFolderMembersSection';
 import SetlistFolderSnackbar, { SetlistFolderSnackbarState } from './SetlistFolderSnackbar';
 import useFolderMembers from './hooks/useFolderMembers';
 import { useOwnership } from '../../helpers/customHooks';
-import { GroupOwnership } from '../../types/ownership.types';
+import { fetchOwnership } from '../../reducers';
+import { Ownership } from '../../types/ownership.types';
 import { SetlistFolder } from '../../types/setlist.types';
 import { logRequestError } from '../../helpers/global';
+import { requestErrorMessage } from '../../helpers/setlist/requestErrorMessage';
 
 interface SetlistFolderDrawerProps {
   openDrawer: boolean;
@@ -56,6 +59,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
   } = props;
 
   const ownership = useOwnership();
+  const dispatch = useDispatch();
   const theme = useTheme();
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'lg'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
@@ -92,8 +96,6 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
     mode,
     openDrawer,
     folderId,
-    folderName,
-    folderCreated,
     ownership,
     showSnackbar,
   });
@@ -121,12 +123,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
         setFolderName(payload.data.groupName);
         setFolderCreated(payload.data.createdAt);
 
-        const currentGroup: GroupOwnership = {
-          id: payload.data._id,
-          name: payload.data.groupName,
-          createdAt: payload.data.createdAt,
-        };
-        await addMembersToGroup(currentGroup);
+        await addMembersToGroup(payload.data._id);
 
         cancelFolderDrawer();
 
@@ -142,7 +139,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
       }
     } catch (error) {
       const action = folderId ? 'update' : 'create';
-      showSnackbar(`Failed to ${action} folder`, 'error');
+      showSnackbar(requestErrorMessage(error, `Failed to ${action} folder`), 'error');
       logRequestError('Error saving folder:', error);
     } finally {
       setIsSavingFolder(false);
@@ -163,6 +160,17 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
     }
   }, [mode, folderId, setFolderName, setFolderCreated, showSnackbar]);
 
+  const refreshOwnership = useCallback(async () => {
+    try {
+      const { data } = await axios.get<Ownership>('/api/ownerships/get', {
+        params: { userId: ownership.userId },
+      });
+      dispatch(fetchOwnership(data));
+    } catch (error) {
+      logRequestError('Error refreshing ownership:', error);
+    }
+  }, [dispatch, ownership.userId]);
+
   const deleteGroup = useCallback(async () => {
     try {
       const { status } = await axios.put(`/api/groups/delete`, {
@@ -171,10 +179,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
         },
       });
       if (status === 200) {
-        await axios.put('/api/ownerships/update', {
-          ...ownership,
-          groupIds: (ownership?.groupIds ?? []).filter((group) => group.id !== folderId),
-        });
+        await refreshOwnership();
         if (onFolderDeleted) {
           onFolderDeleted();
         } else {
@@ -183,10 +188,10 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
         toggleFolderDrawer(false);
       }
     } catch (error) {
-      showSnackbar('Failed to delete folder', 'error');
+      showSnackbar(requestErrorMessage(error, 'Failed to delete folder'), 'error');
       logRequestError('Error deleting folder:', error);
     }
-  }, [folderId, ownership, onFolderDeleted, toggleFolderDrawer, folderName, showSnackbar]);
+  }, [folderId, refreshOwnership, onFolderDeleted, toggleFolderDrawer, folderName, showSnackbar]);
 
   const handleOpenDeleteFolderModal = useCallback(() => {
     setOpenDeleteFolderModal(true);
