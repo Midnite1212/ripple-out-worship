@@ -1,0 +1,12 @@
+{
+  "fetchWrappers": [
+    "axios.delete",
+    "axios.get",
+    "axios.post",
+    "axios.put",
+    "customAxios.delete",
+    "customAxios.get",
+    "customAxios.post",
+    "customAxios.put"
+  ]
+}
