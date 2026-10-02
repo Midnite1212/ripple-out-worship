@@ -22,6 +22,7 @@ import {
   updateSetlist,
 } from '../controllers/setlist.controllers';
 import { createSong, deleteSong, searchSongs, updateSong } from '../controllers/song.controllers';
+import { lockTestDatabase } from '../testing/databaseLock';
 import { FakeRequestInit, callHandler, createRequest, createResponse } from '../testing/http';
 import { TokenUser } from '../utils/verify-jwt';
 import { closeDatabase, getDb } from './connect';
@@ -70,8 +71,10 @@ describe(
   () => {
     const originalDatabaseUrl = process.env.DATABASE_URL;
     const originalBaseUrl = process.env.BASE_URL;
+    let unlock: (() => Promise<void>) | undefined;
 
     before(async () => {
+      unlock = await lockTestDatabase(TEST_DATABASE_URL ?? '');
       process.env.DATABASE_URL = TEST_DATABASE_URL;
       process.env.BASE_URL = 'https://worship.example';
       await migrate(getDb(), { migrationsFolder: path.join(__dirname, '../../drizzle') });
@@ -94,6 +97,7 @@ describe(
 
     after(async () => {
       await closeDatabase();
+      await unlock?.();
       process.env.DATABASE_URL = originalDatabaseUrl;
       if (originalBaseUrl === undefined) delete process.env.BASE_URL;
       else process.env.BASE_URL = originalBaseUrl;
