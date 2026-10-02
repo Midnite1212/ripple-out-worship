@@ -22,19 +22,32 @@ jobs:
     environment: ${{ github.event.inputs.env }}
     runs-on: ubuntu-latest
     steps:
-      - name: "Echo"
+      - name: "Validate inputs"
+        env:
+          RUN_ID: ${{ github.event.inputs.runId }}
         run: |
-          echo "runId: ${{ github.event.inputs.runId }}, env: ${{ github.event.inputs.env }}"
+          if ! [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "runId must be numeric" >&2
+            exit 1
+          fi
+          echo "runId: $RUN_ID, env: ${{ github.event.inputs.env }}"
       - name: Install SSH Keys
         id: install-ssh-keys
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           install -m 600 -D /dev/null ~/.ssh/id_rsa
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} > ~/.ssh/known_hosts
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" > ~/.ssh/known_hosts
       - name: Download Artifact from GH
         id: download-artifact
+        env:
+          RUN_ID: ${{ github.event.inputs.runId }}
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "bash ~/hmcchk-deploy-script/download.sh ${{ github.event.inputs.runId }} ${{ secrets.AUTH_TOKEN }}" | while read line; do echo $line; done
+          ssh "$SSH_TARGET" "bash ~/hmcchk-deploy-script/download.sh $RUN_ID $AUTH_TOKEN" | while read -r line; do echo "$line"; done
       - name: Delete Artifact
         id: delete-artifact
         uses: christian-korneck/delete-run-artifacts-action@v1
