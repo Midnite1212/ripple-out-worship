@@ -29,7 +29,7 @@ Work as a senior React frontend engineer on this project (dispatch the `react-fr
 For each task in order:
 
 1. Do the work.
-2. Verify it: `yarn tsc --noEmit` in `ui/` and `server/` (0 errors), `yarn lint` from the root (0 errors, no new warnings), the unit tests (`CI=true yarn test --watchAll=false` in `ui/`, `TS_NODE_TRANSPILE_ONLY=1 node --test --require ts-node/register 'src/**/*.test.ts'` in `server/`), `yarn build` in `ui/` for UI changes, and a browser check at desktop and mobile widths for anything visible.
+2. Verify it: `yarn tsc --noEmit` in `ui/` and `server/` (0 errors), `yarn lint` from the root (0 errors, no new warnings), the unit tests (`CI=true yarn test --watchAll=false` in `ui/`, `yarn test` in `server/`), `yarn build` in `ui/` for UI changes, and a browser check at desktop and mobile widths for anything visible.
 3. Mark it done and add a one-line summary under it:
    - Local plan file: tick the checkbox in the file.
    - GitHub issue: tick the checkbox in the issue body with `gh issue edit <n> -R Midnite1212/ripple-out-worship --body-file`, changing nothing else in the body. Post progress notes as an issue comment rather than editing prose in the body.
