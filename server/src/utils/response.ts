@@ -1,19 +1,41 @@
+import { DrizzleQueryError } from 'drizzle-orm';
 import { ErrorRequestHandler, Response } from 'express';
-import { Error as MongooseError } from 'mongoose';
+import { InvalidInputError } from '../db/cast';
 
 const GENERIC_ERROR = 'Something went wrong';
 const INVALID_REQUEST = 'Invalid request';
+const INVALID_INPUT_SQLSTATES = new Set([
+  '22001',
+  '22003',
+  '22007',
+  '22008',
+  '22P02',
+  '23502',
+  '23503',
+  '23514',
+]);
 
 export const sendResponse = (res: Response, statusCode: number, payload: unknown): void => {
   res.status(statusCode).json(payload);
 };
 
+const unwrapQueryError = (error: unknown): unknown =>
+  error instanceof DrizzleQueryError ? error.cause ?? new Error('Database query failed') : error;
+
+const isInvalidInput = (error: unknown): boolean => {
+  if (error instanceof InvalidInputError) return true;
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false;
+  const { code } = error;
+  return typeof code === 'string' && INVALID_INPUT_SQLSTATES.has(code);
+};
+
 export const sendError = (res: Response, error: unknown): void => {
-  if (error instanceof MongooseError.ValidationError || error instanceof MongooseError.CastError) {
+  const cause = unwrapQueryError(error);
+  if (isInvalidInput(cause)) {
     sendResponse(res, 400, INVALID_REQUEST);
     return;
   }
-  console.error(error);
+  console.error(cause);
   sendResponse(res, 500, GENERIC_ERROR);
 };
 
@@ -33,6 +55,6 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, nex
     sendResponse(res, clientErrorStatus, INVALID_REQUEST);
     return;
   }
-  console.error(error);
+  console.error(unwrapQueryError(error));
   sendResponse(res, 500, GENERIC_ERROR);
 };

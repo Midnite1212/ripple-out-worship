@@ -1,9 +1,17 @@
 import { RequestHandler, Response } from 'express';
-import { Types } from 'mongoose';
-import { MUSIC_KEYS, Setlist } from '../models/setlist.model';
+import { generateObjectId } from '../db/objectId';
+import { groupRepository } from '../db/repositories/group.repository';
+import {
+  SETLIST_FIELDS,
+  SetlistReach,
+  setlistRepository,
+} from '../db/repositories/setlist.repository';
+import { MUSIC_KEYS } from '../db/schema';
 import { AuthenticatedRequest } from '../policies/permissionMiddleware';
 import {
+  CallerOwnership,
   canDeleteSetlist,
+  canEditGroup,
   canEditSetlist,
   findCallerOwnership,
   isAdmin,
@@ -12,12 +20,8 @@ import {
 } from '../utils/authorization';
 import { pick } from '../utils/pick';
 import { sendError, sendResponse } from '../utils/response';
-import { isObjectIdString } from '../utils/validation';
+import { isObjectIdString, toObjectIdList } from '../utils/validation';
 import { TokenUser } from '../utils/verify-jwt';
-
-const SETLIST_FIELDS = ['name', 'date', 'songs', 'songKeys', 'groupIds'] as const;
-const PUBLIC_SETLIST_PROJECTION = '-createdBy -lastUpdatedBy -groupIds';
-const PUBLIC_SONG_PROJECTION = '-createdBy -lastUpdatedBy';
 
 type SongKeyInput = {
   songId: string;
@@ -61,24 +65,34 @@ export const keepSetlistSongKeys = (songKeys: SongKeyInput[], songIds: unknown):
   return Array.from(keyBySongId, ([songId, key]) => ({ songId, key }));
 };
 
-const listEditableSetlistsFilter = async (user: TokenUser) => {
-  if (isAdmin(user)) return { isDeleted: false };
+const findReach = async (user: TokenUser): Promise<SetlistReach> => {
+  if (isAdmin(user)) return { all: true };
   const ownership = await findCallerOwnership(user);
-  const access: Record<string, unknown>[] = [
-    { _id: { $in: ownedEntryIds(ownership?.setlistIds).filter(isObjectIdString) } },
-    { groupIds: { $in: ownedEntryIds(ownership?.groupIds).filter(isObjectIdString) } },
-  ];
-  if (isObjectIdString(user.id)) access.push({ createdBy: user.id });
-  return { isDeleted: false, $or: access };
+  return {
+    setlistIds: ownedEntryIds(ownership?.setlistIds).filter(isObjectIdString),
+    groupIds: ownedEntryIds(ownership?.groupIds).filter(isObjectIdString),
+    ...(isObjectIdString(user.id) ? { createdBy: user.id } : {}),
+  };
 };
 
-const getReadOptions = (isAnonymous: boolean) =>
-  isAnonymous
-    ? {
-        projection: PUBLIC_SETLIST_PROJECTION,
-        populate: { path: 'songs', select: PUBLIC_SONG_PROJECTION },
-      }
-    : { projection: {}, populate: { path: 'songs' } };
+export const resolveGroupLinks = async (
+  user: TokenUser,
+  ownership: CallerOwnership,
+  requested: string[],
+  current: readonly string[]
+): Promise<string[] | null> => {
+  const added = requested.filter((groupId) => !current.includes(groupId));
+  const removed = current.filter((groupId) => !requested.includes(groupId));
+  if (added.length + removed.length === 0) return requested;
+  const groups = await groupRepository.findLiveAccessByIds([...added, ...removed]);
+  const editable = new Set(
+    groups.filter((group) => canEditGroup(user, group, ownership)).map(({ _id }) => _id)
+  );
+  if (!added.every((groupId) => editable.has(groupId))) return null;
+  const liveGroupIds = new Set(groups.map(({ _id }) => _id));
+  const kept = removed.filter((groupId) => liveGroupIds.has(groupId) && !editable.has(groupId));
+  return [...requested, ...kept];
+};
 
 const createSetlist: RequestHandler = async (
   req: AuthenticatedRequest,
@@ -104,11 +118,26 @@ const createSetlist: RequestHandler = async (
     toCreate.songKeys = keepSetlistSongKeys(songKeys, toCreate.songs);
   }
 
-  const _id = new Types.ObjectId();
+  const _id = generateObjectId();
   const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
 
   try {
-    const setlist = await Setlist.create({
+    if (toCreate.groupIds !== undefined) {
+      const groupIds = toObjectIdList(toCreate.groupIds);
+      if (!groupIds) {
+        sendResponse(res, 400, 'Invalid request');
+        return;
+      }
+      const ownership = groupIds.length > 0 ? await findCallerOwnership(req.user) : null;
+      const linked = await resolveGroupLinks(req.user, ownership, groupIds, []);
+      if (!linked) {
+        sendForbidden(res);
+        return;
+      }
+      toCreate.groupIds = linked;
+    }
+
+    const setlist = await setlistRepository.create({
       ...toCreate,
       _id,
       createdBy: req.user.id,
@@ -125,8 +154,7 @@ const getSetlist: RequestHandler = async (
   res: Response
 ): Promise<void> => {
   const { id } = req.query;
-  const isAnonymous = !req.user;
-  const { projection, populate } = getReadOptions(isAnonymous);
+  const view = req.user ? 'full' : 'public';
 
   try {
     if (Array.isArray(id)) {
@@ -134,9 +162,7 @@ const getSetlist: RequestHandler = async (
         sendResponse(res, 400, 'Invalid setlist id');
         return;
       }
-      const setlists = await Setlist.find({ _id: { $in: id }, isDeleted: false }, projection)
-        .populate(populate)
-        .exec();
+      const setlists = await setlistRepository.findLiveByIds(id, view);
       if (setlists.length > 0) {
         sendResponse(res, 200, setlists);
       } else {
@@ -150,9 +176,7 @@ const getSetlist: RequestHandler = async (
         sendResponse(res, 400, 'Invalid setlist id');
         return;
       }
-      const setlist = await Setlist.findOne({ _id: id, isDeleted: false }, projection)
-        .populate(populate)
-        .exec();
+      const setlist = await setlistRepository.findLiveById(id, view);
       if (setlist) {
         sendResponse(res, 200, setlist);
       } else {
@@ -165,8 +189,7 @@ const getSetlist: RequestHandler = async (
       sendResponse(res, 401, 'Unauthorized');
       return;
     }
-    const filter = await listEditableSetlistsFilter(req.user);
-    const setlists = await Setlist.find(filter).populate('songs').exec();
+    const setlists = await setlistRepository.listLiveReachable(await findReach(req.user));
     sendResponse(res, 200, setlists);
   } catch (error: unknown) {
     sendError(res, error);
@@ -197,15 +220,13 @@ const updateSetlist: RequestHandler = async (
   }
 
   try {
-    const existing = await Setlist.findOne(
-      { _id: id, isDeleted: false },
-      'createdBy groupIds songs'
-    ).exec();
+    const existing = await setlistRepository.findLiveAccess(id);
     if (!existing) {
       sendResponse(res, 404, 'Setlist not found');
       return;
     }
-    if (!canEditSetlist(req.user, existing, await findCallerOwnership(req.user))) {
+    const ownership = await findCallerOwnership(req.user);
+    if (!canEditSetlist(req.user, existing, ownership)) {
       sendForbidden(res);
       return;
     }
@@ -214,11 +235,21 @@ const updateSetlist: RequestHandler = async (
       toUpdate.songKeys = keepSetlistSongKeys(songKeys, toUpdate.songs ?? existing.songs);
     }
 
-    const setlist = await Setlist.findOneAndUpdate(
-      { _id: id, isDeleted: false },
-      { $set: toUpdate },
-      { new: true, runValidators: true }
-    );
+    if (toUpdate.groupIds !== undefined) {
+      const groupIds = toObjectIdList(toUpdate.groupIds);
+      if (!groupIds) {
+        sendResponse(res, 400, 'Invalid request');
+        return;
+      }
+      const linked = await resolveGroupLinks(req.user, ownership, groupIds, existing.groupIds);
+      if (!linked) {
+        sendForbidden(res);
+        return;
+      }
+      toUpdate.groupIds = linked;
+    }
+
+    const setlist = await setlistRepository.updateLive(id, toUpdate);
 
     if (setlist) {
       sendResponse(res, 200, setlist);
@@ -247,7 +278,7 @@ const deleteSetlist: RequestHandler = async (
   }
 
   try {
-    const existing = await Setlist.findOne({ _id: id, isDeleted: false }, 'createdBy').exec();
+    const existing = await setlistRepository.findLiveAccess(id);
     if (!existing) {
       sendResponse(res, 404, 'Setlist not found');
       return;
@@ -257,12 +288,7 @@ const deleteSetlist: RequestHandler = async (
       return;
     }
 
-    const result = await Setlist.updateOne(
-      { _id: id, isDeleted: false },
-      { $set: { isDeleted: true } }
-    );
-
-    if (result.matchedCount > 0) {
+    if (await setlistRepository.softDelete(id)) {
       sendResponse(res, 200, 'Setlist deleted');
     } else {
       sendResponse(res, 404, 'Setlist not found');

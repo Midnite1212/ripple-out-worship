@@ -57,11 +57,3 @@ export const callHandler = async (
   await handler(req, res as unknown as Response, next);
   return next;
 };
-
-export const execResult = (value: unknown) => ({ exec: async () => value });
-
-export const rejectedExec = (error: unknown) => ({
-  exec: async () => {
-    throw error;
-  },
-});

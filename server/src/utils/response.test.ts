@@ -1,11 +1,14 @@
+import { DrizzleQueryError } from 'drizzle-orm';
 import { NextFunction, Request, Response } from 'express';
-import { Error as MongooseError } from 'mongoose';
 import assert from 'node:assert/strict';
 import { Mock, afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { InvalidInputError } from '../db/cast';
 import { FakeResponse, createResponse } from '../testing/http';
 import { errorHandler, sendError, sendResponse } from './response';
 
 const asResponse = (res: FakeResponse): Response => res as unknown as Response;
+
+const databaseError = (code: string) => Object.assign(new Error('database error'), { code });
 
 const handle = (error: unknown, res: FakeResponse) => {
   const next = mock.fn<NextFunction>();
@@ -40,20 +43,36 @@ describe('response utils', () => {
   });
 
   describe('sendError', () => {
-    it('maps a Mongoose ValidationError to 400 without logging', () => {
+    it('maps an InvalidInputError to 400 without logging', () => {
       const res = createResponse();
-      sendError(asResponse(res), new MongooseError.ValidationError());
+      sendError(asResponse(res), new InvalidInputError('title'));
       assert.equal(res.statusCode, 400);
       assert.equal(res.body, 'Invalid request');
       assert.equal(consoleError.mock.callCount(), 0);
     });
 
-    it('maps a Mongoose CastError to 400 without logging', () => {
-      const res = createResponse();
-      sendError(asResponse(res), new MongooseError.CastError('ObjectId', 'bad', '_id'));
-      assert.equal(res.statusCode, 400);
-      assert.equal(res.body, 'Invalid request');
+    it('maps Postgres data and constraint errors to 400 without logging, wrapped or not', () => {
+      for (const code of ['22001', '22007', '22P02', '23502', '23503', '23514']) {
+        for (const error of [
+          databaseError(code),
+          new DrizzleQueryError('select 1', ['Private Name'], databaseError(code)),
+        ]) {
+          const res = createResponse();
+          sendError(asResponse(res), error);
+          assert.equal(res.statusCode, 400, code);
+          assert.equal(res.body, 'Invalid request');
+        }
+      }
       assert.equal(consoleError.mock.callCount(), 0);
+    });
+
+    it('logs the driver error, not the query parameters, for a failed query', () => {
+      const res = createResponse();
+      const cause = databaseError('23505');
+      sendError(asResponse(res), new DrizzleQueryError('insert', ['Private Name'], cause));
+      assert.equal(res.statusCode, 500);
+      assert.equal(res.body, 'Something went wrong');
+      assert.equal(consoleError.mock.calls[0]?.arguments[0], cause);
     });
 
     it('maps any other error to a logged generic 500', () => {

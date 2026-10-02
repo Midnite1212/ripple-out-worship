@@ -1,4 +1,3 @@
-import { Types } from 'mongoose';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
@@ -18,7 +17,7 @@ const GROUP_1 = '507f1f77bcf86cd799439031';
 const GROUP_2 = '507f1f77bcf86cd799439032';
 const GROUP_3 = '507f1f77bcf86cd799439033';
 
-const oid = (id: string) => new Types.ObjectId(id);
+const oid = (id: string) => ({ toString: () => id });
 const entry = (id: string) => ({ createdAt: '2026-01-01T00:00:00.000Z', id, name: 'Entry' });
 
 const setlist = (id: string, fields: Partial<LegacySetlist> = {}): LegacySetlist => ({

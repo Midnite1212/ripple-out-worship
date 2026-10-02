@@ -1,14 +1,13 @@
-import { Types } from 'mongoose';
-import { MongoInjectedFields } from './mongo.types';
+import { RecordFields } from './record.types';
 
-type GroupSchema = {
+type GroupRecord = RecordFields & {
   groupName: string;
-  setlistIds: Types.Array<Types.ObjectId>;
-  createdBy: Types.ObjectId;
-  lastUpdatedBy: Types.ObjectId;
+  setlistIds: string[];
+  createdBy?: string;
+  lastUpdatedBy?: string;
   isDeleted: boolean;
 };
 
-type GroupDocument = GroupSchema & MongoInjectedFields;
+type GroupAccess = Pick<GroupRecord, '_id' | 'createdBy' | 'groupName' | 'createdAt'>;
 
-export { GroupSchema, GroupDocument };
+export { GroupAccess, GroupRecord };

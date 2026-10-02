@@ -1,24 +1,25 @@
-import { Types } from 'mongoose';
-import { MongoInjectedFields } from './mongo.types';
+import { RecordFields } from './record.types';
 
-type SongSchema = {
+type SongRecord = RecordFields & {
   title: string;
-  tempo: Types.Array<string>;
+  tempo: string[];
   originalKey: string;
-  recommendedKeys: Types.Array<string>;
-  themes: Types.Array<string>;
+  recommendedKeys: string[];
+  themes: string[];
   artist: string;
-  year: string;
+  year?: string;
   code?: string;
-  createdBy: Types.ObjectId;
-  lastUpdatedBy: Types.ObjectId;
+  createdBy?: string;
+  lastUpdatedBy?: string;
+  timeSignature: string[];
   isVerified: boolean;
-  timeSignature: Types.Array<string>;
-  simplifiedChordLyrics: string;
   chordLyrics: string;
+  simplifiedChordLyrics?: string;
   isDeleted: boolean;
 };
 
-type SongDocument = SongSchema & MongoInjectedFields;
+type PublicSongRecord = Omit<SongRecord, 'createdBy' | 'lastUpdatedBy'>;
 
-export { SongDocument, SongSchema };
+type SongViewRecord = Omit<PublicSongRecord, 'recommendedKeys' | 'chordLyrics'>;
+
+export { PublicSongRecord, SongRecord, SongViewRecord };

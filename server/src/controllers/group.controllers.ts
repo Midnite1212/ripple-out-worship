@@ -1,36 +1,30 @@
 import { Request, RequestHandler, Response } from 'express';
-import { Group } from '../models/group.model';
-import { Ownership } from '../models/ownership.model';
-import { Setlist } from '../models/setlist.model';
+import { GROUP_FIELDS, groupRepository } from '../db/repositories/group.repository';
+import { ownershipRepository } from '../db/repositories/ownership.repository';
 import { AuthenticatedRequest } from '../policies/permissionMiddleware';
-import { GroupDocument } from '../types/group.types';
+import { GroupAccess } from '../types/group.types';
 import { OwnershipEntry } from '../types/ownership.types';
 import {
   canDeleteGroup,
   canEditGroup,
+  canEditSetlists,
   findCallerOwnership,
   sendForbidden,
 } from '../utils/authorization';
 import { pick } from '../utils/pick';
 import { sendError, sendResponse } from '../utils/response';
-import { isObjectIdString } from '../utils/validation';
-
-const GROUP_FIELDS = ['groupName', 'setlistIds'] as const;
-const GROUP_ACCESS_PROJECTION = 'createdBy groupName createdAt';
+import { isObjectIdString, toObjectIdList } from '../utils/validation';
 
 const parseUserIds = (value: unknown): string[] | null => {
   if (value === undefined) return [];
   return Array.isArray(value) && value.every(isObjectIdString) ? Array.from(new Set(value)) : null;
 };
 
-const toOwnershipEntry = (group: GroupDocument): OwnershipEntry => ({
-  id: String(group._id),
+const toOwnershipEntry = (group: GroupAccess): OwnershipEntry => ({
+  id: group._id,
   name: group.groupName,
   createdAt: group.createdAt ? new Date(group.createdAt).toISOString() : '',
 });
-
-const findLiveGroup = (id: string) =>
-  Group.findOne<GroupDocument>({ _id: id, isDeleted: false }, GROUP_ACCESS_PROJECTION).exec();
 
 const createGroup: RequestHandler = async (
   req: AuthenticatedRequest,
@@ -49,7 +43,20 @@ const createGroup: RequestHandler = async (
   }
 
   try {
-    const group = await Group.create({ ...toCreate, createdBy: req.user.id });
+    if (toCreate.setlistIds !== undefined) {
+      const setlistIds = toObjectIdList(toCreate.setlistIds);
+      if (!setlistIds) {
+        sendResponse(res, 400, 'Invalid request');
+        return;
+      }
+      const ownership = setlistIds.length > 0 ? await findCallerOwnership(req.user) : null;
+      if (!(await canEditSetlists(req.user, setlistIds, ownership))) {
+        sendForbidden(res);
+        return;
+      }
+    }
+
+    const group = await groupRepository.create({ ...toCreate, createdBy: req.user.id });
     sendResponse(res, 200, group);
   } catch (error: unknown) {
     sendError(res, error);
@@ -65,7 +72,7 @@ const getGroup: RequestHandler = async (req: Request, res: Response): Promise<vo
         sendResponse(res, 400, 'Invalid group id');
         return;
       }
-      const group = await Group.findOne({ _id: id, isDeleted: false }).exec();
+      const group = await groupRepository.findLiveById(id);
       if (group) {
         sendResponse(res, 200, group);
       } else {
@@ -74,7 +81,7 @@ const getGroup: RequestHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const groups = await Group.find({ isDeleted: false }).exec();
+    const groups = await groupRepository.listLive();
     if (groups.length > 0) {
       sendResponse(res, 200, groups);
     } else {
@@ -103,21 +110,31 @@ const updateGroup: RequestHandler = async (
   }
 
   try {
-    const existing = await findLiveGroup(id);
+    const existing = await groupRepository.findLiveById(id);
     if (!existing) {
       sendResponse(res, 404, 'Group not found');
       return;
     }
-    if (!canEditGroup(req.user, existing, await findCallerOwnership(req.user))) {
+    const ownership = await findCallerOwnership(req.user);
+    if (!canEditGroup(req.user, existing, ownership)) {
       sendForbidden(res);
       return;
     }
 
-    const group = await Group.findOneAndUpdate(
-      { _id: id, isDeleted: false },
-      { $set: toUpdate },
-      { new: true, runValidators: true }
-    );
+    if (toUpdate.setlistIds !== undefined) {
+      const setlistIds = toObjectIdList(toUpdate.setlistIds);
+      if (!setlistIds) {
+        sendResponse(res, 400, 'Invalid request');
+        return;
+      }
+      const added = setlistIds.filter((setlistId) => !existing.setlistIds.includes(setlistId));
+      if (!(await canEditSetlists(req.user, added, ownership))) {
+        sendForbidden(res);
+        return;
+      }
+    }
+
+    const group = await groupRepository.updateLive(id, toUpdate);
 
     if (group) {
       sendResponse(res, 200, group);
@@ -148,7 +165,7 @@ const updateGroupMembers: RequestHandler = async (
   }
 
   try {
-    const group = await findLiveGroup(groupId);
+    const group = await groupRepository.findLiveAccess(groupId);
     if (!group) {
       sendResponse(res, 404, 'Group not found');
       return;
@@ -158,26 +175,13 @@ const updateGroupMembers: RequestHandler = async (
       return;
     }
 
-    const added =
-      add.length > 0
-        ? await Ownership.updateMany(
-            { userId: { $in: add }, isDeleted: false, 'groupIds.id': { $ne: groupId } },
-            { $addToSet: { groupIds: toOwnershipEntry(group) } }
-          )
-        : null;
-    const removed =
-      remove.length > 0
-        ? await Ownership.updateMany(
-            { userId: { $in: remove }, isDeleted: false },
-            { $pull: { groupIds: { id: groupId } } }
-          )
-        : null;
-
-    sendResponse(res, 200, {
-      groupId,
-      added: added?.modifiedCount ?? 0,
-      removed: removed?.modifiedCount ?? 0,
+    const { added, removed } = await ownershipRepository.changeGroupMembership({
+      entry: toOwnershipEntry(group),
+      add,
+      remove,
     });
+
+    sendResponse(res, 200, { groupId, added, removed });
   } catch (error: unknown) {
     sendError(res, error);
   }
@@ -200,7 +204,7 @@ const deleteGroup: RequestHandler = async (
   }
 
   try {
-    const existing = await findLiveGroup(id);
+    const existing = await groupRepository.findLiveAccess(id);
     if (!existing) {
       sendResponse(res, 404, 'Group not found');
       return;
@@ -210,20 +214,10 @@ const deleteGroup: RequestHandler = async (
       return;
     }
 
-    const result = await Group.updateOne(
-      { _id: id, isDeleted: false },
-      { $set: { isDeleted: true } }
-    );
-
-    if (result.matchedCount === 0) {
+    if (!(await groupRepository.softDeleteCascade(id))) {
       sendResponse(res, 404, 'Group not found');
       return;
     }
-
-    await Promise.all([
-      Ownership.updateMany({ 'groupIds.id': id }, { $pull: { groupIds: { id } } }),
-      Setlist.updateMany({ groupIds: id }, { $pull: { groupIds: id } }),
-    ]);
     sendResponse(res, 200, 'Group deleted');
   } catch (error: unknown) {
     sendError(res, error);
