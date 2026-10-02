@@ -1,4 +1,4 @@
-import { IconButton, Snackbar, Stack, useTheme } from '@mui/material';
+import { IconButton, Snackbar, Stack } from '@mui/material';
 import { useState } from 'react';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +10,7 @@ interface SetlistViewHeaderMenuProps {
 
 const SetlistViewHeaderMenu = ({ setlistId }: SetlistViewHeaderMenuProps) => {
   const [open, setOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const navigate = useNavigate();
 
   const handleCloseSnackbar = (event: React.SyntheticEvent | Event, reason?: string) => {
@@ -19,9 +20,15 @@ const SetlistViewHeaderMenu = ({ setlistId }: SetlistViewHeaderMenuProps) => {
     setOpen(false);
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/setlist/view/${setlistId}`);
+      setSnackbarMessage('Setlist public link copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+      setSnackbarMessage('Failed to copy link to clipboard');
+    }
     setOpen(true);
-    navigator.clipboard.writeText(window.location.href);
   };
 
   const handleEdit = () => {
@@ -42,7 +49,7 @@ const SetlistViewHeaderMenu = ({ setlistId }: SetlistViewHeaderMenuProps) => {
         open={open}
         autoHideDuration={5000}
         onClose={handleCloseSnackbar}
-        message="Setlist public link copied to clipboard"
+        message={snackbarMessage}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         action={
           <IconButton size="small" aria-label="close" color="inherit" onClick={handleCloseSnackbar}>

@@ -1,5 +1,14 @@
-import { Setlist } from '#/types/setlist.types';
-import { Box, Typography, Button, styled, Snackbar, IconButton } from '@mui/material';
+import { Setlist } from '../../../types/setlist.types';
+import {
+  Box,
+  Typography,
+  Button,
+  styled,
+  Snackbar,
+  SnackbarCloseReason,
+  IconButton,
+} from '@mui/material';
+import dayjs from 'dayjs';
 import { customAxios as axios } from '../../custom/customAxios';
 import { FC, ReactElement, useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -8,6 +17,8 @@ import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import SetlistSongsTable from '../SetlistSongsTable';
 import MobileBackButton from '../../navigation/MobileBackButton';
+import { applySongKeys } from '../../../helpers/setlist/applySongKeys';
+import { logRequestError } from '../../../helpers/global';
 
 // Styled components
 const ActionButton = styled(Button)(({ theme }) => ({
@@ -71,11 +82,13 @@ interface SnackbarState {
 
 // Constants
 const SNACKBAR_AUTO_HIDE_DURATION = 5000;
-const SUBTITLE_COLOR = '#CAC4D0';
+const SUBTITLE_COLOR = 'onSurface.variant';
 
 // Utility functions
-const formatDate = (dateString: string): string => {
-  return dateString === '' ? dateString : new Date(dateString).toISOString().split('T')[0];
+const formatDate = (date?: Date | string | null): string => {
+  if (!date) return '';
+  const parsedDate = dayjs(date);
+  return parsedDate.isValid() ? parsedDate.format('YYYY-MM-DD') : '';
 };
 
 const SetlistAdminViewContainer: FC = (): ReactElement | null => {
@@ -93,26 +106,6 @@ const SetlistAdminViewContainer: FC = (): ReactElement | null => {
     open: false,
     message: '',
   });
-
-  // API calls
-  const fetchSetlist = useCallback(async () => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      const { data } = await axios.get('/api/setlists/get', { params: { id } });
-      setSetlist(data);
-    } catch (err) {
-      console.error('Error fetching setlist:', err);
-      setError('Failed to load setlist');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
 
   // Event handlers
   const handleCopyLink = useCallback(async () => {
@@ -137,15 +130,42 @@ const SetlistAdminViewContainer: FC = (): ReactElement | null => {
     window.open(`/setlist/view/${id}`, '_blank');
   }, [id]);
 
-  const handleCloseSnackbar = useCallback((_: any, reason?: string) => {
-    if (reason === 'clickaway') return;
-    setSnackbar((prev) => ({ ...prev, open: false }));
-  }, []);
+  const handleCloseSnackbar = useCallback(
+    (_?: React.SyntheticEvent | Event, reason?: SnackbarCloseReason) => {
+      if (reason === 'clickaway') return;
+      setSnackbar((prev) => ({ ...prev, open: false }));
+    },
+    []
+  );
 
   // Effects
   useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    const fetchSetlist = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const { data } = await axios.get<Setlist>('/api/setlists/get', { params: { id } });
+        if (ignore) return;
+        setSetlist(applySongKeys(data));
+      } catch (err) {
+        logRequestError('Error fetching setlist:', err);
+        if (!ignore) setError('Failed to load setlist');
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+
     fetchSetlist();
-  }, [fetchSetlist]);
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
 
   // Early returns
   if (!id) return null;
@@ -160,7 +180,7 @@ const SetlistAdminViewContainer: FC = (): ReactElement | null => {
           {!isTablet && !isDesktop && <MobileBackButton />}
           <Typography variant="h2">{setlist.name}</Typography>
           <Typography variant="subtitle2" sx={{ color: SUBTITLE_COLOR, fontWeight: 400 }}>
-            {formatDate(setlist.date?.toString() || '')}
+            {formatDate(setlist.date)}
           </Typography>
         </HeaderContainer>
 
@@ -177,7 +197,7 @@ const SetlistAdminViewContainer: FC = (): ReactElement | null => {
         </ButtonContainer>
 
         <ScrollableTableContainer>
-          <SetlistSongsTable songList={setlist.songs} readOnly />
+          <SetlistSongsTable songList={setlist.songs ?? []} readOnly />
         </ScrollableTableContainer>
       </MainContainer>
 

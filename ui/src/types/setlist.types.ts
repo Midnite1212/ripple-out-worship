@@ -12,11 +12,17 @@ interface SetlistEditorProps {
   actionOnEditor?: string;
 }
 
+export type SetlistSongKey = {
+  songId: string;
+  key: string;
+};
+
 export type Setlist = {
   _id: string;
   name: string;
   date: Date | string;
   songs: SongSetlistSchema[];
+  songKeys?: SetlistSongKey[];
   groupIds: string[];
   publicLink: string;
   createdAt: string;
