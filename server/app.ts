@@ -12,10 +12,6 @@ const app = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT) : 1338; // development port is 1338
 const isDevelopment = process.env.NODE_ENV === 'test';
 
-// Use EJS as the template engine
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-
 app.use(
   cors({
     origin: [process.env.MAIN_URL as string],

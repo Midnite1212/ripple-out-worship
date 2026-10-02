@@ -102,31 +102,4 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionConfig> = {
     requiresAuth: false,
     description: 'Search songs',
   },
-
-  // Song Options routes
-  'POST /song-options/create': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Create song option',
-  },
-  'GET /song-options/get': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Get specific song option',
-  },
-  'GET /song-options/list': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'List all song options',
-  },
-  'PUT /song-options/update': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Update song option',
-  },
-  'PUT /song-options/delete': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Delete song option',
-  },
 };
