@@ -44,17 +44,12 @@ const useFolderData = (id: string | undefined, onError: (message: string) => voi
     }
 
     try {
-      const { data, status } = await axios.get<Setlist[]>('/api/setlists/get');
+      const { data, status } = await axios.get<Setlist[]>('/api/setlists/get', {
+        params: { id: folder.setlistIds },
+        validateStatus: (responseStatus) => responseStatus === 200 || responseStatus === 404,
+      });
 
-      if (status !== 200 || !data) {
-        throw new Error('Failed to fetch setlists');
-      }
-
-      const filteredSetlists = data.filter(
-        (setlist) => folder.setlistIds?.includes(setlist._id) ?? false
-      );
-
-      setSetlists(filteredSetlists);
+      setSetlists(status === 200 && Array.isArray(data) ? data : []);
     } catch (err) {
       onError('Could not load the setlists in this folder. Please try again.');
       logRequestError('Error fetching setlists:', err);

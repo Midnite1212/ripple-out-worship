@@ -83,14 +83,14 @@ cd server && yarn dev           # Express on :1338 via nodemon + ts-node
 cd ui && yarn start             # CRA on :3000; src/setupProxy.js proxies /api → :1338 and /external-api → REACT_APP_MAIN_URL/api
 
 # UI (in ui/)
-yarn tsc --noEmit               # type-check; 0 errors required
+yarn typecheck                  # tsc --noEmit; 0 errors required
 CI=true yarn test --watchAll=false   # Jest unit tests; all must pass
 yarn build                      # production build → ui/build (CI moves it to server/client)
 
 # Server (in server/)
-yarn tsc --noEmit               # type-check; 0 errors required (noUnusedLocals and noUnusedParameters are on)
-TS_NODE_TRANSPILE_ONLY=1 node --test --require ts-node/register 'src/**/*.test.ts'   # node:test unit tests, no database needed
-yarn build                      # tsc → server/dist
+yarn typecheck                  # tsc --noEmit; 0 errors required (noUnusedLocals and noUnusedParameters are on)
+yarn test                       # node:test unit tests, no database needed (Node 21+ for the glob)
+yarn build                      # tsc -p tsconfig.build.json → server/dist, tests excluded
 
 # Lint and format (from repo root)
 yarn lint                       # eslint over ui/ and server/; 0 errors required, do not add warnings
@@ -102,10 +102,10 @@ Prettier config: `.prettierrc.json` — 2-space, single quotes, semicolons, `pri
 ## Technology Stack
 
 - **UI**: React 18, TypeScript (`strict`, `noImplicitAny`, `noImplicitReturns`), Create React App 5, MUI 5 (`@mui/material`, `@mui/icons-material`, `@mui/x-date-pickers` 6) on Emotion, Redux Toolkit 1 + redux-persist, react-router-dom 6, axios 1, react-hook-form 7 + zod 3 via `@hookform/resolvers`, dayjs, `@react-oauth/google`
-- **Server**: Express 4, Mongoose 7, jsonwebtoken, cors, http-proxy-middleware 2 (`nodemailer`, `ejs`, `bcryptjs`, `google-auth-library`, `nanoid` are still listed in `package.json` but unused)
+- **Server**: Express 4, Mongoose 7, jsonwebtoken, cors, http-proxy-middleware 2
 - **Fonts**: Work Sans and DM Sans through `@fontsource`
 
-Majors only. `ui/package.json` and `server/package.json` are the source of truth for exact versions; check them before relying on an API. `moment` is installed but unused; use `dayjs`.
+Majors only. `ui/package.json` and `server/package.json` are the source of truth for exact versions; check them before relying on an API. Use `dayjs` for dates.
 
 ## Architecture
 
@@ -252,7 +252,7 @@ const fetchSong = async () => {
 - Log request failures with `logRequestError(context, err)` from `helpers/global`. Never `console.log`/`console.error` a raw axios error: its `config.headers` carries the user's JWT.
 - Every request handles failure visibly. Mutations show a Snackbar on success and on failure (see `SetlistFolderDetail.tsx` for the pattern). Never show a success message without checking the result. Never render the raw server error string.
 - Lists and records from the API can be empty, missing fields, or `null` (`publicLink`, `date`, `code`, `simplifiedChordLyrics`). Guard with `?.` and `Array.isArray` before `.map`.
-- Prefer fetching what a page needs with query params (`/api/setlists/get?id=…`) over pulling every record into Redux. Do not add a Redux cache for setlists or folders; fetch them where they are used.
+- `GET /api/setlists/get` without an id returns only setlists the caller can edit; load a folder's setlists by id (`params: { id: folder.setlistIds }`). Prefer fetching what a page needs with query params (`/api/setlists/get?id=…`) over pulling every record into Redux. Do not add a Redux cache for setlists or folders; fetch them where they are used.
 
 ## Routing and Access
 
@@ -291,7 +291,7 @@ Songs store `chordLyrics` (and optional `simplifiedChordLyrics`) as one plain-te
 ### Adding an endpoint
 
 1. Add the handler to `src/controllers/<resource>.controllers.ts` and export it.
-2. Add one line to `src/routes/<resource>.routes.ts` with the full resource path: `router.get('/<resource>/action', handler)`. Routers are mounted without a prefix in `routes/index.ts`, so the path you register is both the URL under `/api` and the `ROUTE_PERMISSIONS` key; GitNexus `route_map` relies on that.
+2. Add one line to `src/routes/<resource>.routes.ts` with the full resource path: `router.get('/<resource>/action', handler)`. Routers are mounted without a prefix in `routes/index.ts`, so the path you register is both the URL under `/api` and the `ROUTE_PERMISSIONS` key. GitNexus `route_map` lists these routes but cannot link UI callers yet, because the UI calls them under `/api` through `customAxios`.
 3. Add `'GET /<resource>/action'` to `ROUTE_PERMISSIONS` in `src/policies/permissions.config.ts`. A route with no entry logs a warning and falls back to `requireAuth`; never rely on that.
 
 ### Permissions
@@ -299,7 +299,8 @@ Songs store `chordLyrics` (and optional `simplifiedChordLyrics`) as one plain-te
 - `requiresAuth: true` adds `requireAuth` (valid JWT). `allowedAccessTypes` then adds `requireAccessType`. `PermissionConfig` is a union, so `allowedAccessTypes` cannot be set on a public route.
 - `requiresAuth: false, optionalAuth: true` fills `req.user` when a valid token is sent and never rejects. Use it for endpoints that serve both the public setlist view and logged-in pages (`GET /setlists/get`), and branch on `req.user` in the controller.
 - Access types on the server: `ministry`, `t3ch` (spelled with a 3; it is the stored value), `tc`, `admin`. The list is not hierarchical here: only the types listed are allowed.
-- `requireAuth` only proves the caller is logged in. It does not prove they own the setlist, folder, or ownership record they are changing. New write endpoints must check that `req.user.id` owns the target (or has the right access type) before writing.
+- `requireAuth` only proves the caller is logged in. Setlist, folder, and ownership writes check ownership through `src/utils/authorization.ts` (`canEditSetlist`, `canDeleteSetlist`, `canEditGroup`, `canDeleteGroup`, `findCallerOwnership`, `sendForbidden`): load the target, then the caller's ownership, then 403 with `sendForbidden` before writing. New write endpoints must do the same.
+- Rules: a setlist's creator, an admin, or a member of a folder listed in `setlist.groupIds` can edit it; only its creator or an admin can delete it. Folder members can edit a folder; only its creator or an admin can delete it (legacy folders without `createdBy`: any member). Folder membership changes go through `PUT /groups/members`; `PUT /ownerships/update` is self-only and accepts `setlistIds` only.
 
 ### Controller shape
 
@@ -360,13 +361,13 @@ User profiles from the main site carry personal data about real congregation mem
 
 - `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_URI`, `MONGO_DB`, `MONGO_REPLICA_SET`, `MONGO_AUTH_SOURCE`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
 - `ui/.env`: `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL`. Required for `yarn start` and `yarn build`.
-- `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/`. See `#common-gotchas` for how the `dev` script sets it.
+- `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/`. The `dev` script sets it through `cross-env`.
 
 ## CI / Deploy (`.github/workflows/`)
 
-- `build-and-upload-workflow.yml` (manual, `uat` or `prod`): Node 16, installs all three packages, writes `.env` files from `UI_ENV` / `SERVER_ENV` secrets, runs `yarn build` in `ui/` with `CI=false` (warnings do not fail it), moves `ui/build/*` → `server/client/`, deletes `ui/`, zips, uploads, and triggers the deploy workflow.
-- `deploy-and-delete-workflow.yml` downloads the artifact on the server over SSH and deletes it from GitHub.
-- No workflow runs lint or type-check on PRs. Run them yourself before you commit.
+- `build-and-upload-workflow.yml` (manual, `uat` or `prod`): Node 20, frozen-lockfile installs of all three packages, secrets passed through `env:`, writes `.env` files from `UI_ENV` / `SERVER_ENV` secrets, runs `yarn build` in `ui/` with `CI=false` (warnings do not fail it), moves `ui/build/*` → `server/client/`, deletes `ui/`, zips, uploads, and triggers the deploy workflow.
+- `deploy-and-delete-workflow.yml` validates `runId`, downloads the artifact on the server over SSH, and deletes it from GitHub. The artifact still contains `server/.env`.
+- `pr-check.yml` runs on PRs to `release` and `main`: root lint, UI typecheck and tests, server typecheck and tests (Node 22). Keep all three green.
 - `.github/copilot-instructions.md` is Copilot's short summary; this file is the source of truth when they differ.
 
 ## PR and Commit References
@@ -379,14 +380,14 @@ Read `.claude/docs/commit-convention.md` and `.claude/docs/pr-description.md` be
 2. The server reads `Authorization`; the main site reads `Authorisation`. Each side is correct for itself.
 3. A route missing from `ROUTE_PERMISSIONS` silently falls back to `requireAuth`.
 4. Public routes cannot take `allowedAccessTypes`; use `optionalAuth` when a public endpoint must know who is calling.
-5. `requireAuth` is authentication, not authorisation. Check ownership on writes.
+5. `requireAuth` is authentication, not authorisation. Check ownership on writes with the helpers in `utils/authorization.ts`.
 6. `t3ch` is an access type, not a typo. The UI's `UserAccessType` enum knows only `admin` and `user`.
 7. Every model has `isDeleted`; filter it on every read and update.
-8. `package.json` scripts use `set NODE_ENV=… &&`, which is Windows `cmd` syntax. On macOS and Linux `set` does not export the variable, so `yarn dev` runs with `NODE_ENV` unset and the SPA fallback is on (non-API GETs return an ENOENT error locally). On Windows the value keeps a trailing space, which `app.ts` trims. Run `NODE_ENV=test yarn dev` until the scripts use `cross-env`.
+8. Server tests rely on `node --test` expanding `'src/**/*.test.ts'`, which needs Node 21+; on Node 20 pass the files explicitly.
 9. The SPA is served from `server/client/` only after a CI build. Locally use the CRA dev server on :3000.
 10. `#/` imports do not resolve in CRA at runtime. Use relative imports.
 11. `useUser()` hits the network on every mount; do not call it in list items.
-12. `moment` is a dependency but unused. Use `dayjs`.
+12. `isObjectIdString` requires a 24-character hex string; Mongoose's own `isValidObjectId` also accepts any 12-character string, so don't use it for request input.
 13. The CI build sets `CI=false`, so warnings never fail a deploy. Treat them as errors locally. `.eslintignore` does not exclude `ui/build/`, so delete it before `yarn lint` or the bundle floods the output with errors.
 14. Route `key`s in `routes.ts` must be unique, and React keys from data (`_id`), not indexes.
 

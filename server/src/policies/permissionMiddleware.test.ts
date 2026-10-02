@@ -64,6 +64,7 @@ describe('permissionMiddleware', () => {
         'POST /setlists/create': 1,
         'POST /songs/create': 2,
         'PUT /groups/delete': 1,
+        'PUT /groups/members': 1,
         'PUT /groups/update': 1,
         'PUT /ownerships/delete': 1,
         'PUT /ownerships/update': 1,
