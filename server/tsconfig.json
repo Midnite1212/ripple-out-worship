@@ -19,6 +19,6 @@
     "noImplicitReturns": true,
     "skipLibCheck": true
   },
-  "include": ["src", "app.ts"],
+  "include": ["src", "scripts", "app.ts"],
   "exclude": ["node_modules"]
 }
