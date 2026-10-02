@@ -48,43 +48,43 @@ describe('permissionMiddleware', () => {
   });
 
   describe('createPermissionMiddleware', () => {
-    const requireAuth = () => middlewareAt('POST', '/ownerships/create', 0);
-    const optionalAuth = () => middlewareAt('GET', '/setlists/get', 0);
+    const requireAuth = () => middlewareAt('POST', '/api/ownerships/create', 0);
+    const optionalAuth = () => middlewareAt('GET', '/api/setlists/get', 0);
 
     it('builds the expected chain for every configured route', () => {
       const expected: Record<string, number> = {
-        'GET /groups/get': 1,
-        'GET /ownerships/get': 1,
-        'GET /setlists/get': 1,
-        'GET /songs/get': 0,
-        'GET /songs/get-view': 0,
-        'GET /songs/search': 0,
-        'POST /groups/create': 1,
-        'POST /ownerships/create': 1,
-        'POST /setlists/create': 1,
-        'POST /songs/create': 2,
-        'PUT /groups/delete': 1,
-        'PUT /groups/members': 1,
-        'PUT /groups/update': 1,
-        'PUT /ownerships/delete': 1,
-        'PUT /ownerships/update': 1,
-        'PUT /setlists/delete': 1,
-        'PUT /setlists/update': 1,
-        'PUT /songs/delete': 2,
-        'PUT /songs/update': 2,
+        'GET /api/groups/get': 1,
+        'GET /api/ownerships/get': 1,
+        'GET /api/setlists/get': 1,
+        'GET /api/songs/get': 0,
+        'GET /api/songs/get-view': 0,
+        'GET /api/songs/search': 0,
+        'POST /api/groups/create': 1,
+        'POST /api/ownerships/create': 1,
+        'POST /api/setlists/create': 1,
+        'POST /api/songs/create': 2,
+        'PUT /api/groups/delete': 1,
+        'PUT /api/groups/members': 1,
+        'PUT /api/groups/update': 1,
+        'PUT /api/ownerships/delete': 1,
+        'PUT /api/ownerships/update': 1,
+        'PUT /api/setlists/delete': 1,
+        'PUT /api/setlists/update': 1,
+        'PUT /api/songs/delete': 2,
+        'PUT /api/songs/update': 2,
       };
       assert.deepEqual(Object.keys(ROUTE_PERMISSIONS).sort(), Object.keys(expected).sort());
       for (const [routeKey, length] of Object.entries(expected)) {
         const [method, path] = routeKey.split(' ');
         const chain = createPermissionMiddleware(method ?? '', path ?? '');
         assert.equal(chain.length, length, routeKey);
-        if (routeKey === 'GET /setlists/get') assert.equal(chain[0], optionalAuth());
+        if (routeKey === 'GET /api/setlists/get') assert.equal(chain[0], optionalAuth());
         else if (length > 0) assert.equal(chain[0], requireAuth(), routeKey);
       }
     });
 
     it('upper-cases the method before looking up the route', () => {
-      assert.equal(middlewareAt('get', '/setlists/get', 0), optionalAuth());
+      assert.equal(middlewareAt('get', '/api/setlists/get', 0), optionalAuth());
     });
 
     it('falls back to requireAuth and warns when a route has no config', () => {
@@ -100,7 +100,7 @@ describe('permissionMiddleware', () => {
   });
 
   describe('requireAuth', () => {
-    const requireAuth = () => middlewareAt('POST', '/ownerships/create', 0);
+    const requireAuth = () => middlewareAt('POST', '/api/ownerships/create', 0);
 
     it('rejects a request with no authorization header', async () => {
       const { next, req, res } = await run(requireAuth());
@@ -166,7 +166,7 @@ describe('permissionMiddleware', () => {
   });
 
   describe('requireAccessType', () => {
-    const requireAccessType = () => middlewareAt('POST', '/songs/create', 1);
+    const requireAccessType = () => middlewareAt('POST', '/api/songs/create', 1);
 
     it('allows each listed access type', async () => {
       for (const accessType of ['ministry', 't3ch', 'tc', 'admin']) {
@@ -198,7 +198,7 @@ describe('permissionMiddleware', () => {
     });
 
     it('runs after requireAuth in the song write chains', async () => {
-      const chain = createPermissionMiddleware('PUT', '/songs/update');
+      const chain = createPermissionMiddleware('PUT', '/api/songs/update');
       const req = createRequest({ headers: { authorization: `Bearer ${tokenFor('unsigned')}` } });
       const res = createResponse();
       for (const handler of chain) {
@@ -210,7 +210,7 @@ describe('permissionMiddleware', () => {
   });
 
   describe('optionalAuth', () => {
-    const optionalAuth = () => middlewareAt('GET', '/setlists/get', 0);
+    const optionalAuth = () => middlewareAt('GET', '/api/setlists/get', 0);
 
     it('continues anonymously without a token', async () => {
       const { next, req, res } = await run(optionalAuth());

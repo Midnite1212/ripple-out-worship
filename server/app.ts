@@ -34,7 +34,7 @@ app.use(
   })
 );
 app.use(express.json());
-app.use('/api', getRoutes());
+app.use(getRoutes());
 if (!isDevelopment) {
   app.use(express.static(path.join(__dirname, '/client/')));
   app.use(express.static(path.join(__dirname, '/client/images')));
