@@ -90,10 +90,11 @@ yarn build                      # production build → ui/build (what the Vercel
 # Server (in server/)
 yarn typecheck                  # tsc --noEmit; 0 errors required (noUnusedLocals and noUnusedParameters are on)
 yarn test                       # node:test unit tests, no database needed (Node 21+ for the glob)
-DATABASE_URL_TEST=<url> yarn test  # also runs src/db/integration.test.ts against a disposable Postgres database
+DATABASE_URL_TEST=<url> yarn test  # also runs the Postgres integration suites (src/db/integration.test.ts, src/db/import/import.integration.test.ts) against a disposable database
 yarn build                      # tsc -p tsconfig.build.json → server/dist, tests excluded; the Vercel `server` service runs it as a type gate
 yarn db:generate                # drizzle-kit generate: new SQL migration in server/drizzle/ from src/db/schema.ts
 yarn db:migrate                 # drizzle-kit migrate: apply pending migrations to DATABASE_URL
+yarn import:mongo --dir <dir>   # dry run of the one-off MongoDB export import; --apply writes (see #cutover-from-mongodb)
 
 # Lint and format (from repo root)
 yarn lint                       # eslint over ui/ and server/; 0 errors required, do not add warnings
@@ -350,9 +351,9 @@ Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `se
 
 `server/tsconfig.json` has `noUnusedLocals` and `noUnusedParameters`. Prefix intentionally unused parameters with `_`. `yarn tsc --noEmit` in `server/` must show 0 errors.
 
-### Legacy data backfill
+### MongoDB import
 
-`src/utils/legacyOwnership.ts` holds the rules for repairing legacy MongoDB data: fill a missing `createdBy` on setlists and folders when exactly one live ownership lists them, and merge `folder.setlistIds` with `setlist.groupIds` as a union. The one-off MongoDB → Postgres import script (#34) applies that plan while loading; ownership entry ids are stored without foreign keys, while dangling song, setlist, or folder references in links are skipped because those tables have foreign keys.
+`scripts/import-mongo.ts` (`yarn import:mongo`) loads a `mongoexport` of the old database; the logic lives in `src/db/import/` and is pure except `apply.ts`. While planning it applies `planBackfill` from `src/utils/legacyOwnership.ts` (a missing `createdBy` on a setlist or folder is filled when exactly one live ownership lists it), keeps every `_id` as lowercase hex, falls back to the ObjectId time for missing timestamps, imports soft-deleted documents with `is_deleted = true`, and writes `group_setlists` as the union of `folder.setlistIds` and `setlist.groupIds` with the folder order first. Links to missing documents or invalid ids are skipped, and so are links of soft-deleted folders, matching `softDeleteCascade`; ownership entries are kept as stored because their tables have no foreign keys. It writes everything in one transaction and refuses a target whose nine tables are not empty unless `--replace` truncates them first. Its report prints counts and ids only. See `#cutover-from-mongodb`.
 
 ## Auth Flow
 
@@ -376,7 +377,7 @@ User profiles from the main site carry personal data about real congregation mem
 ## Environment Variables
 
 - `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `DATABASE_URL` (Postgres connection string; Neon's pooled `-pooler` URL with `sslmode=require` works), `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
-- `DATABASE_URL_TEST` (shell only, never in `.env`): a disposable Postgres database for `yarn test`; the integration suite migrates it and truncates every table, and is skipped when unset (CI runs without it).
+- `DATABASE_URL_TEST` (shell only, never in `.env`): a disposable Postgres database for `yarn test`; the integration suites migrate it and truncate every table, take turns through an advisory lock (`src/testing/databaseLock.ts`), and are skipped when it is unset (CI runs without it).
 - `ui/.env`: `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL`. Required for `yarn start` and `yarn build`.
 - `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/` when `app.ts` runs directly. The `dev` script sets it through `cross-env`.
 - Vercel project (all environments): `JWT_KEY`, `MAIN_URL`, `BASE_URL` (the public origin `publicLink` is built from), `DATABASE_URL` (the Neon pooled `-pooler` connection string with `sslmode=require`) for the `server` service at runtime, and `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL` for the `ui` service at build time. `PORT` is not used on Vercel.
@@ -387,6 +388,32 @@ User profiles from the main site carry personal data about real congregation mem
 - Node 22 for builds and functions comes from the project's Node.js Version setting; `.nvmrc` pins it for local use.
 - `pr-check.yml` runs on PRs to `release` and `main`: root lint, UI typecheck and tests, server typecheck and tests (Node 22). Keep all three green.
 - `.github/copilot-instructions.md` is Copilot's short summary; this file is the source of truth when they differ.
+
+## Cutover from MongoDB
+
+A one-time move of the production data from MongoDB to Neon. The export files hold member names and ownership data: keep them outside the repo, never commit or share them, and delete them once the import is verified.
+
+```bash
+# 1. Stop writes to the old app, then export the four collections (relaxed Extended JSON is the default)
+mkdir -p ~/ripple-mongo-export && cd ~/ripple-mongo-export
+for c in songs setlists groups ownerships; do
+  mongoexport --uri '<mongodb uri with the database name>' --collection=$c --jsonArray --out=$c.json
+done
+
+# 2. Create the schema on Neon with the direct (non-pooler) connection string
+cd <repo>/server
+DATABASE_URL='<neon direct url>' yarn db:migrate
+
+# 3. Dry run: row counts per table, skipped links, invalid documents, ambiguous backfill items, unknown fields
+yarn import:mongo --dir ~/ripple-mongo-export --database-url '<neon direct url>'
+
+# 4. Write it in one transaction
+yarn import:mongo --dir ~/ripple-mongo-export --database-url '<neon direct url>' --apply
+```
+
+5. Set the Vercel project's `DATABASE_URL` to the Neon pooled `-pooler` URL with `sslmode=require` and deploy.
+
+Without `--database-url` the script uses `DATABASE_URL` (from `server/.env` too); check the `Target:` line before applying. Running `--apply` again refuses because the tables are no longer empty. `--apply --replace` truncates all nine tables and imports again; use it only before go-live, since it discards everything written to Postgres since the last import.
 
 ## PR and Commit References
 
