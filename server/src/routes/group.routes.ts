@@ -9,10 +9,10 @@ import { createPermissionRouter } from '../policies';
 
 const router = createPermissionRouter();
 
-router.post('/groups/create', createGroup);
-router.get('/groups/get', getGroup);
-router.put('/groups/update', updateGroup);
-router.put('/groups/members', updateGroupMembers);
-router.put('/groups/delete', deleteGroup);
+router.post('/api/groups/create', createGroup);
+router.get('/api/groups/get', getGroup);
+router.put('/api/groups/update', updateGroup);
+router.put('/api/groups/members', updateGroupMembers);
+router.put('/api/groups/delete', deleteGroup);
 
 export default router.getRouter();

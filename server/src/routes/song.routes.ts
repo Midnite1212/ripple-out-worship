@@ -10,11 +10,11 @@ import { createPermissionRouter } from '../policies';
 
 const router = createPermissionRouter();
 
-router.post('/songs/create', createSong);
-router.get('/songs/get', getSong);
-router.get('/songs/get-view', getSongView);
-router.put('/songs/update', updateSong);
-router.put('/songs/delete', deleteSong);
-router.get('/songs/search', searchSongs);
+router.post('/api/songs/create', createSong);
+router.get('/api/songs/get', getSong);
+router.get('/api/songs/get-view', getSongView);
+router.put('/api/songs/update', updateSong);
+router.put('/api/songs/delete', deleteSong);
+router.get('/api/songs/search', searchSongs);
 
 export default router.getRouter();

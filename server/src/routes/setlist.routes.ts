@@ -8,9 +8,9 @@ import { createPermissionRouter } from '../policies';
 
 const router = createPermissionRouter();
 
-router.post('/setlists/create', createSetlist);
-router.get('/setlists/get', getSetlist);
-router.put('/setlists/update', updateSetlist);
-router.put('/setlists/delete', deleteSetlist);
+router.post('/api/setlists/create', createSetlist);
+router.get('/api/setlists/get', getSetlist);
+router.put('/api/setlists/update', updateSetlist);
+router.put('/api/setlists/delete', deleteSetlist);
 
 export default router.getRouter();

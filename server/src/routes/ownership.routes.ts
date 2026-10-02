@@ -8,9 +8,9 @@ import { createPermissionRouter } from '../policies';
 
 const router = createPermissionRouter();
 
-router.post('/ownerships/create', createOwnership);
-router.get('/ownerships/get', getOwnership);
-router.put('/ownerships/update', updateOwnership);
-router.put('/ownerships/delete', deleteOwnership);
+router.post('/api/ownerships/create', createOwnership);
+router.get('/api/ownerships/get', getOwnership);
+router.put('/api/ownerships/update', updateOwnership);
+router.put('/api/ownerships/delete', deleteOwnership);
 
 export default router.getRouter();

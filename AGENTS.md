@@ -135,10 +135,10 @@ Imports are **relative** (`'../../helpers/customHooks'`). The `#/*` alias in `ui
 
 | Path                                        | Role                                                                                                                                    |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.ts`                                    | Express app: CORS, `/external-api` proxy to `MAIN_URL`, JSON body, `/api` router, static `client/` and SPA fallback outside development |
+| `app.ts`                                    | Express app: CORS, `/external-api` proxy to `MAIN_URL`, JSON body, routes at `/`, static `client/` and SPA fallback outside development |
 | `src/mongoose.ts`                           | `connectToDB()` from `MONGO_*` env vars                                                                                                 |
-| `src/routes/index.ts`                       | Mounts `/ownerships`, `/groups`, `/setlists`, `/songs`                                                                                  |
-| `src/routes/<resource>.routes.ts`           | `createPermissionRouter()` + one line per action, registered with the full path (`'/songs/create'`)                                     |
+| `src/routes/index.ts`                       | `getRoutes()`: one router combining the ownership, group, setlist, and song routers                                                     |
+| `src/routes/<resource>.routes.ts`           | `createPermissionRouter()` + one line per action, registered with the full path (`'/api/songs/create'`)                                 |
 | `src/policies/`                             | `PermissionRouter`, `permissionMiddleware` (`requireAuth`, `requireAccessType`), and `permissions.config.ts` (`ROUTE_PERMISSIONS`)      |
 | `src/controllers/<resource>.controllers.ts` | One exported `RequestHandler` per action                                                                                                |
 | `src/models/<resource>.model.ts`            | Mongoose schemas: `Song`, `Setlist`, `Ownership`, `Group`                                                                               |
@@ -291,16 +291,16 @@ Songs store `chordLyrics` (and optional `simplifiedChordLyrics`) as one plain-te
 ### Adding an endpoint
 
 1. Add the handler to `src/controllers/<resource>.controllers.ts` and export it.
-2. Add one line to `src/routes/<resource>.routes.ts` with the full resource path: `router.get('/<resource>/action', handler)`. Routers are mounted without a prefix in `routes/index.ts`, so the path you register is both the URL under `/api` and the `ROUTE_PERMISSIONS` key. GitNexus `route_map` lists these routes but cannot link UI callers yet, because the UI calls them under `/api` through `customAxios`.
-3. Add `'GET /<resource>/action'` to `ROUTE_PERMISSIONS` in `src/policies/permissions.config.ts`. A route with no entry logs a warning and falls back to `requireAuth`; never rely on that.
+2. Add one line to `src/routes/<resource>.routes.ts` with the full URL: `router.get('/api/<resource>/action', handler)`. `app.ts` mounts the routers at the root, so the registered path is the exact URL the UI calls and the `ROUTE_PERMISSIONS` key, which lets GitNexus `route_map` link UI callers to the route.
+3. Add `'GET /api/<resource>/action'` to `ROUTE_PERMISSIONS` in `src/policies/permissions.config.ts`. A route with no entry logs a warning and falls back to `requireAuth`; never rely on that.
 
 ### Permissions
 
 - `requiresAuth: true` adds `requireAuth` (valid JWT). `allowedAccessTypes` then adds `requireAccessType`. `PermissionConfig` is a union, so `allowedAccessTypes` cannot be set on a public route.
-- `requiresAuth: false, optionalAuth: true` fills `req.user` when a valid token is sent and never rejects. Use it for endpoints that serve both the public setlist view and logged-in pages (`GET /setlists/get`), and branch on `req.user` in the controller.
+- `requiresAuth: false, optionalAuth: true` fills `req.user` when a valid token is sent and never rejects. Use it for endpoints that serve both the public setlist view and logged-in pages (`GET /api/setlists/get`), and branch on `req.user` in the controller.
 - Access types on the server: `ministry`, `t3ch` (spelled with a 3; it is the stored value), `tc`, `admin`. The list is not hierarchical here: only the types listed are allowed.
 - `requireAuth` only proves the caller is logged in. Setlist, folder, and ownership writes check ownership through `src/utils/authorization.ts` (`canEditSetlist`, `canDeleteSetlist`, `canEditGroup`, `canDeleteGroup`, `findCallerOwnership`, `sendForbidden`): load the target, then the caller's ownership, then 403 with `sendForbidden` before writing. New write endpoints must do the same.
-- Rules: a setlist's creator, an admin, or a member of a folder listed in `setlist.groupIds` can edit it; only its creator or an admin can delete it. Folder members can edit a folder; only its creator or an admin can delete it (legacy folders without `createdBy`: any member). Folder membership changes go through `PUT /groups/members`; `PUT /ownerships/update` is self-only and accepts `setlistIds` only.
+- Rules: a setlist's creator, an admin, or a member of a folder listed in `setlist.groupIds` can edit it; only its creator or an admin can delete it. Folder members can edit a folder; only its creator or an admin can delete it (legacy folders without `createdBy`: any member). Folder membership changes go through `PUT /api/groups/members`; `PUT /api/ownerships/update` is self-only and accepts `setlistIds` only.
 
 ### Controller shape
 
@@ -331,7 +331,7 @@ Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `se
 - Never use `upsert: true` on an update endpoint. An update for a missing id must 404, not create a document.
 - Never send `error.message` to the client. Use `sendError`.
 - Escape user input before using it in `$regex` (or use a text index). Raw input allows regex injection and slow queries.
-- Soft delete is the convention: every model has `isDeleted`. Filter `isDeleted: false` in every read and update. Delete endpoints are `PUT /<resource>/delete` and set `isDeleted: true`.
+- Soft delete is the convention: every model has `isDeleted`. Filter `isDeleted: false` in every read and update. Delete endpoints are `PUT /api/<resource>/delete` and set `isDeleted: true`.
 - Models use `(models.X as Model<XSchema> | undefined) ?? model<XSchema>('X', schema)`. Keep the guard (nodemon reloads would otherwise throw `OverwriteModelError`) and the cast (a bare `models.X ||` widens every query to `any`).
 
 ### Server type-check
