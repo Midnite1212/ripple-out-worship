@@ -1,0 +1,121 @@
+import { customAxios as axios } from '../components/custom/customAxios';
+import { Setlist, SetlistFolder } from '../types/setlist.types';
+import { SongSchema, SongViewSchema } from '../types/song.types';
+import { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { updateAxiosClient } from '../components/custom/customAxios';
+import { User } from '../types/user.types';
+import { fetchOwnership, fetchSongs } from '../reducers';
+import { Ownership } from '../types/ownership.types';
+
+type RootState = {
+  user: string;
+  songs: SongSchema[] | SongViewSchema[];
+  setlists: Setlist[];
+  folders: SetlistFolder[];
+  ownership: Ownership;
+};
+
+export const useUser = (): { token: string; user?: User; loading: boolean } => {
+  const token = useSelector((state: RootState) => state.user);
+  const dispatch = useDispatch();
+  const [user, setUser] = useState<User>();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        setLoading(true);
+        const { data } = await axios.post<User>('/external-api/auth/verify-token', {
+          token: token,
+        });
+        updateAxiosClient(token);
+        setUser(data);
+        const { data: ownershipData, status } = await axios.get('/api/ownerships/get', {
+          params: {
+            userId: data.id,
+          },
+          validateStatus: function (status) {
+            return status >= 200 && status < 500; // Don't reject on 404
+          },
+        });
+        if (status === 200 && ownershipData) {
+          dispatch(fetchOwnership(ownershipData));
+        } else {
+          const { data: createOwnership, status: createStatus } = await axios.post(
+            '/api/ownerships/create',
+            {
+              userId: data.id,
+              fullName: data.fullName,
+              accessType: data.accessType,
+              setlistIds: [],
+              groupIds: [],
+            }
+          );
+          if (createStatus === 200) {
+            dispatch(fetchOwnership(createOwnership[0]));
+          }
+        }
+      } catch (err: any) {
+        if (err?.response?.data?.raw === 'token-expired') {
+          localStorage.clear();
+          window.location.reload();
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, [token, dispatch, setLoading]);
+  return { token, user: user, loading: loading };
+};
+export const useSongs = (id?: string) => {
+  const dispatch = useDispatch();
+  useEffect(() => {
+    const fetchAllSongs = async () => {
+      try {
+        const { data, status } = await axios.get('/api/songs/get');
+        if (status === 200) {
+          dispatch(fetchSongs(data));
+        }
+      } catch (e) {
+        console.log(e);
+      }
+    };
+    fetchAllSongs();
+  }, [dispatch]);
+
+  const allSongs = useSelector((state: RootState) => state.songs);
+  if (id) {
+    const song = allSongs.find((song) => song._id === id);
+    return song;
+  }
+  return allSongs;
+};
+/**
+ * @deprecated Use axios calls with the proper params from useOwnership instead.
+ */
+export const useSetlists = (id?: string) => {
+  const allSetlists = useSelector((state: RootState) => state.setlists);
+  if (id) {
+    const setlist = allSetlists.find((setlist) => setlist._id === id);
+    return setlist;
+  }
+  return allSetlists;
+};
+/**
+ * @deprecated Use axios calls with the proper params from useOwnership instead.
+ */
+export const useFolders = (id?: string) => {
+  const allFolders = useSelector((state: RootState) => state.folders);
+  if (id) {
+    const folder = allFolders.find((folder) => folder._id === id);
+    return folder;
+  }
+  return allFolders;
+};
+
+export const useOwnership = () => {
+  const ownership = useSelector((state: RootState) => state.ownership);
+  return ownership;
+};

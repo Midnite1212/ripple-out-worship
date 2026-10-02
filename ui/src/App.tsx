@@ -1,29 +1,45 @@
-import * as React from 'react';
-import { ChakraProvider, Box, Text, Link, VStack, Code, Grid, theme } from '@chakra-ui/react';
-import { ColorModeSwitcher } from './ColorModeSwitcher';
-import { Logo } from './Logo';
+import { Provider } from 'react-redux';
+import { store } from './store';
+import { CssBaseline, Box } from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
+import { routes as appRoutes } from './routes';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import customTheme from './theme';
+import './styles.css';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import PrivateRouteWrapper from './components/custom/PrivateRouteWrapper';
 
-export const App = () => (
-  <ChakraProvider theme={theme}>
-    <Box textAlign="center" fontSize="xl">
-      <Grid minH="100vh" p={3}>
-        <ColorModeSwitcher justifySelf="flex-end" />
-        <VStack spacing={8}>
-          <Logo h="40vmin" pointerEvents="none" />
-          <Text>
-            Edit <Code fontSize="xl">src/App.tsx</Code> and save to reload.
-          </Text>
-          <Link
-            color="teal.500"
-            href="https://chakra-ui.com"
-            fontSize="2xl"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Learn Chakra
-          </Link>
-        </VStack>
-      </Grid>
-    </Box>
-  </ChakraProvider>
-);
+function App() {
+  return (
+    <Provider store={store}>
+      <ThemeProvider theme={customTheme}>
+        <CssBaseline />
+        <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID!}>
+          <BrowserRouter>
+            <Box
+              display="flex"
+              component="main"
+              sx={{ flexGrow: 1, width: '100%', height: '100vh' }}
+            >
+              <Routes>
+                {appRoutes.map((route) => (
+                  <Route
+                    key={route.key}
+                    path={route.path}
+                    element={
+                      <PrivateRouteWrapper permissions={route.permissions}>
+                        <route.component />
+                      </PrivateRouteWrapper>
+                    }
+                  />
+                ))}
+              </Routes>
+            </Box>
+          </BrowserRouter>
+        </GoogleOAuthProvider>
+      </ThemeProvider>
+    </Provider>
+  );
+}
+
+export default App;

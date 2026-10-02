@@ -1,0 +1,642 @@
+import { FC, useCallback, useEffect, useState } from 'react';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { Controller, SubmitHandler, useForm } from 'react-hook-form';
+import { customAxios as axios } from '../custom/customAxios';
+import { SongEditorFields, SongEditorProps, SongSchema } from '../../types/song.types';
+import {
+  musicKeysOptions,
+  tempoOptions,
+  timeSignatureOptions,
+  themeOptions,
+} from '../../constants';
+import SongHelpDialog from './SongHelpDialog';
+import {
+  Box,
+  Container,
+  useMediaQuery,
+  Typography,
+  Grid,
+  TextField,
+  Stack,
+  TextareaAutosize,
+  FormControl,
+  Button,
+  Alert,
+  AlertTitle,
+  Snackbar,
+  Fade,
+  Chip,
+  Autocomplete,
+  Divider,
+} from '@mui/material';
+
+// ICONS
+import InfoIcon from '@mui/icons-material/Info';
+import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
+import AutocompleteInput from '../custom/AutocompleteInput';
+import { useNavigate } from 'react-router-dom';
+import { MusicNote } from '@mui/icons-material';
+import PageHeader from '../navigation/PageHeader';
+import HeaderWithIcon from '../custom/HeaderWithIcon';
+import { findFirstLetterLyrics } from '../../helpers/global';
+import SongDeleteDialog from './SongDeleteDialog';
+
+const SongEditorContainer: FC<SongEditorProps> = () => {
+  // hook to detect the window size
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const navigate = useNavigate();
+
+  // STATES
+  // TODO: To be refactored to use RHF as a single source of truth instead of keeping 2 types of states
+  const [action, setAction] = useState<string>('new');
+  const [openDeleteDialog, setOpenDeleteDialog] = useState<boolean>(false);
+
+  const [tempoList, setTempoList] = useState<string[]>([]);
+  const [disabledTempo, setDisabledTempo] = useState<string[]>(tempoOptions);
+  const [themeList, setThemeList] = useState<string[]>([]);
+  const [disabledTheme, setDisabledTheme] = useState<string[]>(themeOptions);
+  const [timeSignatureList, setTimeSignatureList] = useState<string[]>([]);
+  const [recommendedKeys, setRecommendedKeys] = useState<string[]>([]);
+
+  const [successSnackbarOpen, setSuccessSnackbarOpen] = useState<boolean>(false);
+  const [invalidSong, setInvalidSong] = useState<string>('');
+
+  const paths: string[] = window.location.pathname.split('/');
+
+  const [song, setSong] = useState<SongSchema>({} as SongSchema);
+  const [songId, setSongId] = useState<string>('');
+
+  useEffect(() => {
+    if (paths.includes('edit')) {
+      setAction('edit');
+      setSongId(paths[paths.length - 1]);
+    }
+  }, [paths]);
+
+  const getSong = useCallback(async () => {
+    if (songId === '') return;
+
+    try {
+      const { data, status } = await axios.get(`/api/songs/get?id=${songId}`);
+      if (status === 200) {
+        setSong(data);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  }, [songId]);
+
+  useEffect(() => {
+    getSong();
+  }, [getSong]);
+
+  // FORM HANDLER
+  const { register, handleSubmit, formState, reset, control, setValue, getValues } =
+    useForm<SongEditorFields>();
+  const { errors } = formState;
+  useEffect(() => {
+    if (song && Object.keys(song).length > 0) {
+      setTempoList(song.tempo);
+      setDisabledTempo(tempoOptions.filter((tempo) => !song.tempo.includes(tempo)));
+      setThemeList(song.themes);
+      setDisabledTheme(themeOptions.filter((theme) => !song.themes.includes(theme)));
+      setTimeSignatureList(song.timeSignature);
+      setRecommendedKeys(song.recommendedKeys || []);
+      reset({
+        artist: song.artist,
+        title: song.title,
+        year: song.year,
+        code: song.code,
+        themes: song.themes,
+        chordLyrics: song.chordLyrics,
+        simplifiedChordLyrics: song.simplifiedChordLyrics,
+        originalKey: song.originalKey,
+      });
+    }
+  }, [song, reset]);
+
+  const handleSaveSong: SubmitHandler<SongEditorFields> = useCallback(
+    async (data) => {
+      const songLetter = findFirstLetterLyrics(data.chordLyrics) || '';
+      const payload = await axios.get('/api/songs/search', {
+        params: {
+          code: songLetter,
+          sortBy: 'code',
+        },
+      });
+      const songs: SongSchema[] = payload.data.data;
+      const songIndex = songs.reverse()[0]?.code
+        ? parseInt(songs.reverse()[0].code.replace(songLetter, '')) + 1
+        : 1;
+
+      try {
+        let payload;
+        if (action === 'edit') {
+          payload = await axios.put('/api/songs/update', {
+            id: songId,
+            artist: data.artist,
+            title: data.title,
+            themes: themeList,
+            tempo: tempoList,
+            year: data.year,
+            code: data.code,
+            timeSignature: timeSignatureList,
+            simplifiedChordLyrics: data.simplifiedChordLyrics,
+            originalKey: data.originalKey,
+            recommendedKeys: recommendedKeys,
+            chordLyrics: data.chordLyrics,
+          });
+        } else {
+          payload = await axios.post('/api/songs/create', {
+            artist: data.artist,
+            title: data.title,
+            themes: themeList,
+            tempo: tempoList,
+            year: data.year,
+            code: songLetter + songIndex,
+            timeSignature: timeSignatureList,
+            simplifiedChordLyrics: data.simplifiedChordLyrics,
+            originalKey: data.originalKey,
+            recommendedKeys: recommendedKeys,
+            chordLyrics: data.chordLyrics,
+          });
+        }
+
+        if (payload.status === 200) {
+          setInvalidSong('');
+          setSuccessSnackbarOpen(true);
+          navigate(`/song/${songId}`);
+          return payload.data;
+        }
+
+        handleCloseSuccessSnackbar();
+        setInvalidSong('Error saving song!');
+        return;
+      } catch (error: any) {
+        setInvalidSong(error.response.data);
+        handleCloseSuccessSnackbar();
+        console.log(error);
+      }
+    },
+    [action, navigate, recommendedKeys, songId, tempoList, themeList, timeSignatureList]
+  );
+
+  const handleCloseSuccessSnackbar = () => {
+    setSuccessSnackbarOpen(false);
+  };
+
+  const handleDeleteTempo = (chipToDelete: string) => () => {
+    setTempoList((chips) => chips.filter((chip) => chip !== chipToDelete));
+    setDisabledTempo((prevDisabledChips) => [...prevDisabledChips, chipToDelete]);
+  };
+
+  const handleReactivateTempo = (chipToActivate: string) => () => {
+    setTempoList((prevTempoList) => [...prevTempoList, chipToActivate]);
+    setDisabledTempo((prevDisabledChips) =>
+      prevDisabledChips.filter((chip) => chip !== chipToActivate)
+    );
+  };
+
+  // TODO: refactor to use a single source of truth from RHF form states
+  // Manually retrigger validation from the themes external states for nwo
+  const handleDeleteTheme = (chipToDelete: string) => () => {
+    const newThemeList = themeList.filter((chip) => chip !== chipToDelete);
+    setThemeList(newThemeList);
+    setDisabledTheme((prevDisabledChips) => [...prevDisabledChips, chipToDelete]);
+    setValue('themes', newThemeList, { shouldValidate: true });
+  };
+
+  const handleReactivateTheme = (chipToActivate: string) => () => {
+    const newThemeList = [...themeList, chipToActivate];
+    setThemeList(newThemeList);
+    setDisabledTheme((prevDisabledChips) =>
+      prevDisabledChips.filter((chip) => chip !== chipToActivate)
+    );
+    setValue('themes', newThemeList, { shouldValidate: true });
+  };
+
+  const SongActionButtons = ({ display }: { display: boolean }) => {
+    return (
+      <Box>
+        <Stack direction="column" display={display ? 'flex' : 'none'}>
+          <Stack direction="row">
+            {action === 'edit' && isDesktop ? (
+              <>
+                <Button
+                  color="error"
+                  variant="outlined"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => setOpenDeleteDialog(true)}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: '100px',
+                    px: 3,
+                  }}
+                >
+                  Delete
+                </Button>
+                <Divider variant="fullWidth" orientation="vertical" flexItem sx={{ mx: 2 }} />
+              </>
+            ) : null}
+            <Button
+              type={'submit'}
+              color="secondary"
+              variant="contained"
+              sx={{
+                mr: 1,
+                textTransform: 'none',
+                borderRadius: '100px',
+                px: 3,
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              color={'secondary'}
+              sx={{
+                textTransform: 'none',
+                borderRadius: '100px',
+                border: 1,
+                px: 2,
+              }}
+              onClick={() => navigate(action === 'edit' ? `/song/${songId}` : '/song')}
+            >
+              Cancel
+            </Button>
+          </Stack>
+          {action === 'edit' && !isDesktop ? (
+            <Button
+              color="error"
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              onClick={() => setOpenDeleteDialog(true)}
+              sx={{
+                textTransform: 'none',
+                borderRadius: '100px',
+                px: 3,
+                py: '6px',
+                width: '33%',
+                mt: 2,
+              }}
+            >
+              Delete
+            </Button>
+          ) : null}
+        </Stack>
+      </Box>
+    );
+  };
+
+  return (
+    <Container sx={{ py: '1rem', px: '2rem', height: '100%', minWidth: '100%', overflow: 'auto' }}>
+      <Box>
+        <form onSubmit={handleSubmit(handleSaveSong)}>
+          <PageHeader
+            title={action === 'edit' ? 'Edit Song' : 'New Song'}
+            icon={<MusicNote />}
+            actionButtons={<SongActionButtons display={isDesktop} />}
+          />
+
+          <Box my={'24px'}>
+            {/* Error message */}
+            {invalidSong ? (
+              <Typography variant={'body2'} color={'error'}>
+                {invalidSong}
+              </Typography>
+            ) : null}
+
+            {/* Success message */}
+            <Snackbar
+              open={successSnackbarOpen}
+              onClose={handleCloseSuccessSnackbar}
+              autoHideDuration={6000}
+              TransitionComponent={Fade}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+              <Alert severity="success" onClose={handleCloseSuccessSnackbar}>
+                <AlertTitle>Success</AlertTitle>
+                Song successfully saved!
+              </Alert>
+            </Snackbar>
+
+            <Stack direction={['column', 'row']} gap={4} mt={2}>
+              {/* column 1: Song Details */}
+              <Box width={isDesktop ? '35vw' : 'unset'}>
+                <Stack direction="column" spacing={2}>
+                  {/* header */}
+                  <HeaderWithIcon
+                    headerText={'Song Details'}
+                    headerVariant={'h4'}
+                    iconColor={'secondary.main'}
+                    headerColor={'secondary.main'}
+                    Icon={InfoIcon}
+                  />
+
+                  {/* Song Title Field */}
+                  <Controller
+                    name="title"
+                    control={control}
+                    defaultValue=""
+                    rules={{ required: 'Song title is required' }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        id="title"
+                        label="Song Title*"
+                        variant="outlined"
+                        error={!!errors.title}
+                        helperText={errors?.title?.message}
+                        fullWidth
+                      />
+                    )}
+                  />
+
+                  {/* Artist Field */}
+                  <Controller
+                    name="artist"
+                    control={control}
+                    defaultValue=""
+                    rules={{ required: 'Artist name is required' }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        id="artist"
+                        label="Artist Name*"
+                        variant="outlined"
+                        error={!!errors.artist}
+                        helperText={errors?.artist?.message}
+                        fullWidth
+                      />
+                    )}
+                  />
+
+                  {/* Themes field */}
+                  <Controller
+                    name="themes"
+                    control={control}
+                    defaultValue={[]}
+                    rules={{
+                      validate: () => {
+                        const currentThemes = getValues('themes') || [];
+                        return currentThemes.length > 0 || 'At least one theme must be selected';
+                      },
+                    }}
+                    render={() => <TextField sx={{ display: 'none' }} />}
+                  />
+                  <FormControl fullWidth>
+                    <Box>
+                      <Typography
+                        variant="h4"
+                        sx={{ pb: 1 }}
+                        color={errors.themes ? 'error' : 'inherit'}
+                      >
+                        Themes*
+                      </Typography>
+                      {errors.themes && (
+                        <Typography
+                          variant="caption"
+                          color="error"
+                          sx={{ mb: 1, display: 'block' }}
+                        >
+                          {errors.themes.message}
+                        </Typography>
+                      )}
+                      {themeOptions.map((item) => (
+                        <Chip
+                          sx={{
+                            backgroundColor: disabledTheme.includes(item)
+                              ? 'secondary.lighter'
+                              : 'primary.dark',
+                            borderRadius: '8px',
+                            m: 0.5,
+                          }}
+                          key={item}
+                          label={item}
+                          onDelete={
+                            disabledTheme.includes(item) ? undefined : handleDeleteTheme(item)
+                          }
+                          onClick={
+                            disabledTheme.includes(item) ? handleReactivateTheme(item) : undefined
+                          }
+                        />
+                      ))}
+                    </Box>
+                  </FormControl>
+
+                  {/* Tempo field */}
+                  <FormControl fullWidth>
+                    <Box>
+                      <Typography variant="h4" sx={{ pb: 1 }}>
+                        Tempo
+                      </Typography>
+                      {tempoOptions.map((item) => (
+                        <Chip
+                          sx={{
+                            backgroundColor: disabledTempo.includes(item)
+                              ? 'secondary.lighter'
+                              : 'primary.dark',
+                            borderRadius: '8px',
+                            m: 0.5,
+                          }}
+                          key={item}
+                          label={item}
+                          onDelete={
+                            disabledTempo.includes(item) ? undefined : handleDeleteTempo(item)
+                          }
+                          onClick={
+                            disabledTempo.includes(item) ? handleReactivateTempo(item) : undefined
+                          }
+                        />
+                      ))}
+                    </Box>
+                  </FormControl>
+
+                  {/* Time Signature field */}
+                  <FormControl fullWidth>
+                    <AutocompleteInput
+                      id="time-signature"
+                      options={timeSignatureOptions}
+                      label="Time Signature"
+                      autoComplete="time-signature"
+                      value={timeSignatureList}
+                      onChange={(_, newValue) => {
+                        setTimeSignatureList(newValue as string[]);
+                      }}
+                      register={register}
+                      multiple
+                    />
+                  </FormControl>
+
+                  {/* Original Key field */}
+                  <FormControl fullWidth>
+                    <Controller
+                      name="originalKey"
+                      control={control}
+                      defaultValue=""
+                      rules={{ required: 'Original key is required' }}
+                      render={({ field }) => (
+                        <Autocomplete
+                          {...field}
+                          id="original-key"
+                          options={musicKeysOptions}
+                          getOptionLabel={(option) => option}
+                          filterSelectedOptions
+                          value={field.value || null}
+                          onChange={(event, newValue) => field.onChange(newValue)}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              variant="outlined"
+                              label="Original Key*"
+                              error={!!errors.originalKey}
+                              helperText={errors?.originalKey?.message}
+                            />
+                          )}
+                        />
+                      )}
+                    />
+                  </FormControl>
+
+                  {/* Recommended Keys field */}
+                  <FormControl fullWidth>
+                    <AutocompleteInput
+                      id="recommended-keys"
+                      options={musicKeysOptions}
+                      label="Recommended Keys"
+                      autoComplete="recommended-keys"
+                      value={recommendedKeys}
+                      onChange={(_, newValue) => {
+                        setRecommendedKeys(newValue as string[]);
+                      }}
+                      register={register}
+                      multiple
+                    />
+                  </FormControl>
+
+                  {/* Year field */}
+                  <Controller
+                    name="year"
+                    control={control}
+                    defaultValue={''}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        id="year"
+                        label="Year"
+                        type="number"
+                        error={!!errors.year}
+                        helperText={errors?.year?.message}
+                        variant="outlined"
+                        fullWidth
+                      />
+                    )}
+                  />
+                </Stack>
+              </Box>
+
+              {/* column 2: Lyrics & Chords */}
+              <Box width="100%">
+                <Stack direction="column" spacing={2}>
+                  <Grid
+                    container
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <HeaderWithIcon
+                      headerText={'Lyrics & Chords*'}
+                      headerVariant={'h4'}
+                      iconColor={'secondary.main'}
+                      headerColor={'secondary.main'}
+                      Icon={LibraryMusicIcon}
+                    />
+                    <SongHelpDialog />
+                  </Grid>
+
+                  <Controller
+                    name="chordLyrics"
+                    control={control}
+                    defaultValue=""
+                    rules={{ required: 'Chord lyrics are required' }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        id="chord-lyrics"
+                        placeholder="Enter lyrics & chords here"
+                        multiline
+                        error={!!errors.chordLyrics}
+                        helperText={errors?.chordLyrics?.message}
+                        InputProps={{
+                          inputComponent: TextareaAutosize,
+                          inputProps: {
+                            minRows: 20,
+                            style: {
+                              resize: 'vertical',
+                            },
+                          },
+                        }}
+                        variant="outlined"
+                        fullWidth
+                      />
+                    )}
+                  />
+
+                  <Grid
+                    container
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <HeaderWithIcon
+                      headerText={'Lyrics & Simplified Chords'}
+                      headerVariant={'h4'}
+                      iconColor={'secondary.main'}
+                      headerColor={'secondary.main'}
+                      Icon={LibraryMusicIcon}
+                    />
+                    <SongHelpDialog />
+                  </Grid>
+
+                  <Controller
+                    name="simplifiedChordLyrics"
+                    control={control}
+                    defaultValue=""
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        id="simplified-chord-lyrics"
+                        placeholder="Enter lyrics & simplified chords here"
+                        multiline
+                        error={!!errors.simplifiedChordLyrics}
+                        helperText={errors?.simplifiedChordLyrics?.message}
+                        InputProps={{
+                          inputComponent: TextareaAutosize,
+                          inputProps: {
+                            minRows: 20,
+                            style: {
+                              resize: 'vertical',
+                            },
+                          },
+                        }}
+                        variant="outlined"
+                        fullWidth
+                      />
+                    )}
+                  />
+                </Stack>
+              </Box>
+              <SongActionButtons display={!isDesktop} />
+            </Stack>
+          </Box>
+        </form>
+        <SongDeleteDialog
+          open={openDeleteDialog}
+          onClose={() => setOpenDeleteDialog(false)}
+          songId={songId}
+        />
+      </Box>
+    </Container>
+  );
+};
+
+export default SongEditorContainer;
