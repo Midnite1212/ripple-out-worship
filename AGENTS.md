@@ -45,7 +45,7 @@ The HMCC Hong Kong worship-team app: a song library with chord charts, key trans
 Three independent packages in one repo, no workspaces wiring:
 
 - `ui/` — React 18 **TypeScript** SPA on Create React App (`react-scripts` 5), MUI v5, Redux Toolkit + redux-persist, react-router-dom **v6**
-- `server/` — Express 4 + Mongoose 7 in **TypeScript**, run with `ts-node` through nodemon
+- `server/` — Express 4 + Drizzle ORM on Postgres (Neon) in **TypeScript**, run with `ts-node` through nodemon
 - Root `package.json` — ESLint, Prettier, Husky, lint-staged, and commitlint only
 
 Login, sign-up, and password reset are **not** in this repo. They live on the main HMCC HK website (`hmcchk-web`), reached through the `/external-api` proxy. See `#auth-flow`.
@@ -90,7 +90,10 @@ yarn build                      # production build → ui/build (what the Vercel
 # Server (in server/)
 yarn typecheck                  # tsc --noEmit; 0 errors required (noUnusedLocals and noUnusedParameters are on)
 yarn test                       # node:test unit tests, no database needed (Node 21+ for the glob)
+DATABASE_URL_TEST=<url> yarn test  # also runs src/db/integration.test.ts against a disposable Postgres database
 yarn build                      # tsc -p tsconfig.build.json → server/dist, tests excluded; the Vercel `server` service runs it as a type gate
+yarn db:generate                # drizzle-kit generate: new SQL migration in server/drizzle/ from src/db/schema.ts
+yarn db:migrate                 # drizzle-kit migrate: apply pending migrations to DATABASE_URL
 
 # Lint and format (from repo root)
 yarn lint                       # eslint over ui/ and server/; 0 errors required, do not add warnings
@@ -105,7 +108,7 @@ Prettier config: `.prettierrc.json` — 2-space, single quotes, semicolons, `pri
 ## Technology Stack
 
 - **UI**: React 18, TypeScript (`strict`, `noImplicitAny`, `noImplicitReturns`), Create React App 5, MUI 5 (`@mui/material`, `@mui/icons-material`, `@mui/x-date-pickers` 6) on Emotion, Redux Toolkit 1 + redux-persist, react-router-dom 6, axios 1, react-hook-form 7 + zod 3 via `@hookform/resolvers`, dayjs, `@react-oauth/google`
-- **Server**: Express 4, Mongoose 7, jsonwebtoken, cors, http-proxy-middleware 2
+- **Server**: Express 4, Drizzle ORM (`drizzle-orm`, `drizzle-kit`) over node-postgres (`pg`) on Neon Postgres, jsonwebtoken, cors, http-proxy-middleware 2
 - **Fonts**: Work Sans and DM Sans through `@fontsource`
 
 Majors only. `ui/package.json` and `server/package.json` are the source of truth for exact versions; check them before relying on an API. Use `dayjs` for dates.
@@ -136,19 +139,19 @@ Imports are **relative** (`'../../helpers/customHooks'`). The `#/*` alias in `ui
 
 ### Backend (`server/`)
 
-| Path                                        | Role                                                                                                                                    |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.ts`                                    | Vercel `server` service entry: default-exports the app; run directly (`yarn dev`, `yarn start`) it connects, then listens on `PORT`     |
-| `src/createApp.ts`                          | `createApp()`: CORS, `/external-api` proxy to `MAIN_URL`, `ensureDatabase` for `/api`, JSON body, routes, a JSON 404 for unknown `/api` |
-| `src/db/connect.ts`                         | `ensureDatabase()`: one memoized connect per instance, shared by concurrent requests, retried after a failure                           |
-| `src/mongoose.ts`                           | `connectToDB()` from `MONGO_*` env vars                                                                                                 |
-| `src/routes/index.ts`                       | `getRoutes()`: one router combining the ownership, group, setlist, and song routers                                                     |
-| `src/routes/<resource>.routes.ts`           | `createPermissionRouter()` + one line per action, registered with the full path (`'/api/songs/create'`)                                 |
-| `src/policies/`                             | `PermissionRouter`, `permissionMiddleware` (`requireAuth`, `requireAccessType`), and `permissions.config.ts` (`ROUTE_PERMISSIONS`)      |
-| `src/controllers/<resource>.controllers.ts` | One exported `RequestHandler` per action                                                                                                |
-| `src/models/<resource>.model.ts`            | Mongoose schemas: `Song`, `Setlist`, `Ownership`, `Group`                                                                               |
-| `src/types/`                                | `<Resource>Schema` and `<Resource>Document` types per model                                                                             |
-| `src/utils/`                                | `verify-jwt.ts`, `response.ts`, `pick.ts`, `validation.ts`; password-reset email lives on the main site                                 |
+| Path                                           | Role                                                                                                                                                                                           |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.ts`                                       | Vercel `server` service entry: default-exports the app; run directly (`yarn dev`, `yarn start`) it connects, then listens on `PORT`                                                            |
+| `src/createApp.ts`                             | `createApp()`: CORS, `/external-api` proxy to `MAIN_URL`, `ensureDatabase` for `/api`, JSON body, routes, a JSON 404 for unknown `/api`                                                        |
+| `src/db/connect.ts`                            | `getDb()` (lazy `pg` pool + Drizzle from `DATABASE_URL`), `ensureDatabase()` (one memoized `select 1` per instance, shared by concurrent requests, retried after a failure), `closeDatabase()` |
+| `src/db/schema.ts`                             | Drizzle tables; `drizzle/` holds the generated SQL migrations and `drizzle.config.ts` points drizzle-kit at both                                                                               |
+| `src/db/repositories/<resource>.repository.ts` | The only code that queries the database: casts input like Mongoose did (`InvalidInputError` → 400), runs multi-table writes in a transaction, and returns the API JSON shape                   |
+| `src/routes/index.ts`                          | `getRoutes()`: one router combining the ownership, group, setlist, and song routers                                                                                                            |
+| `src/routes/<resource>.routes.ts`              | `createPermissionRouter()` + one line per action, registered with the full path (`'/api/songs/create'`)                                                                                        |
+| `src/policies/`                                | `PermissionRouter`, `permissionMiddleware` (`requireAuth`, `requireAccessType`), and `permissions.config.ts` (`ROUTE_PERMISSIONS`)                                                             |
+| `src/controllers/<resource>.controllers.ts`    | One exported `RequestHandler` per action                                                                                                                                                       |
+| `src/types/`                                   | `<Resource>Record` (API JSON shape) and `<Resource>Access` (authorization fields) per resource                                                                                                 |
+| `src/utils/`                                   | `verify-jwt.ts`, `response.ts`, `pick.ts`, `validation.ts`; password-reset email lives on the main site                                                                                        |
 
 ## Frontend Code Standards
 
@@ -306,6 +309,7 @@ Songs store `chordLyrics` (and optional `simplifiedChordLyrics`) as one plain-te
 - Access types on the server: `ministry`, `t3ch` (spelled with a 3; it is the stored value), `tc`, `admin`. The list is not hierarchical here: only the types listed are allowed.
 - `requireAuth` only proves the caller is logged in. Setlist, folder, and ownership writes check ownership through `src/utils/authorization.ts` (`canEditSetlist`, `canDeleteSetlist`, `canEditGroup`, `canDeleteGroup`, `findCallerOwnership`, `sendForbidden`): load the target, then the caller's ownership, then 403 with `sendForbidden` before writing. New write endpoints must do the same.
 - Rules: a setlist's creator, an admin, or a member of a folder listed in `setlist.groupIds` can edit it; only its creator or an admin can delete it. Folder members can edit a folder; only its creator or an admin can delete it (legacy folders without `createdBy`: any member). Folder membership changes go through `PUT /api/groups/members`; `PUT /api/ownerships/update` is self-only and accepts `setlistIds` only.
+- `folder.setlistIds` and `setlist.groupIds` are two views of one `group_setlists` table, so linking either way grants the folder's members edit rights on the setlist. A folder write may newly add only setlists the caller can edit (`canEditSetlists`); a setlist write may newly link only folders the caller can edit, and keeps links to live folders the caller cannot edit (`resolveGroupLinks`).
 
 ### Controller shape
 
@@ -317,7 +321,7 @@ const getSong: RequestHandler = async (req: Request, res: Response): Promise<voi
     return;
   }
   try {
-    const song = await Song.findOne({ _id: id, isDeleted: false }).exec();
+    const song = await songRepository.findLiveById(id);
     if (!song) {
       sendResponse(res, 404, 'Song not found');
       return;
@@ -329,15 +333,18 @@ const getSong: RequestHandler = async (req: Request, res: Response): Promise<voi
 };
 ```
 
-Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `sendError` maps Mongoose validation and cast errors to 400 and everything else to a logged, generic 500), `pick` (`pick.ts`), and `isObjectIdString` (`validation.ts`). Use them; do not add another per-controller `sendResponse`.
+Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `sendError` maps `InvalidInputError` and Postgres data or constraint errors (`22xxx`, `23502`, `23503`, `23514`) to 400 and everything else to a logged, generic 500, unwrapping `DrizzleQueryError` so query parameters are never logged), `pick` (`pick.ts`), and `isObjectIdString` / `toObjectIdList` (`validation.ts`). Use them; do not add another per-controller `sendResponse`.
 
 - Validate and narrow `req.query` / `req.body` values before using them in a query. Query values may be strings, arrays, or objects; ids must pass `isObjectIdString`.
-- Never pass `req.body` straight into `create`, `findOneAndUpdate`, or `$set`. `pick` the allowed fields. Set `createdBy`, `userId`, and `accessType` from `req.user`, never from the body.
-- Never use `upsert: true` on an update endpoint. An update for a missing id must 404, not create a document.
+- Controllers never import `drizzle-orm` or the schema; they call a repository. Unit tests mock repository methods with `mock.method(songRepository, 'findLiveById', …)`.
+- Never pass `req.body` straight into a repository. `pick` the allowed fields. Set `createdBy`, `userId`, and `accessType` from `req.user`, never from the body.
+- An update for a missing id must 404, not create a row. The only insert-or-return is `ownershipRepository.createIfMissing`.
 - Never send `error.message` to the client. Use `sendError`.
-- Escape user input before using it in `$regex` (or use a text index). Raw input allows regex injection and slow queries.
-- Soft delete is the convention: every model has `isDeleted`. Filter `isDeleted: false` in every read and update. Delete endpoints are `PUT /api/<resource>/delete` and set `isDeleted: true`.
-- Models use `(models.X as Model<XSchema> | undefined) ?? model<XSchema>('X', schema)`. Keep the guard (nodemon reloads would otherwise throw `OverwriteModelError`) and the cast (a bare `models.X ||` widens every query to `any`).
+- Pass user text to `ilike` through `containsPattern`, which escapes `%`, `_`, and `\`. Never build SQL with string concatenation; use the query builder or `sql` template parameters.
+- Ids are 24-hex Mongo-style strings, stored lowercase (`generateObjectId`, `toObjectId`), so public setlist links and `isObjectIdString` keep working.
+- Soft delete is the convention: every top-level table has `is_deleted`. Filter it in every read and update. Delete endpoints are `PUT /api/<resource>/delete` and set it to true.
+- Requests that write more than one table run inside `getDb().transaction(…)` in the repository.
+- Schema changes: edit `src/db/schema.ts`, run `yarn db:generate`, commit the new `drizzle/` files, and never edit an applied migration.
 
 ### Server type-check
 
@@ -345,7 +352,7 @@ Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `se
 
 ### Legacy data backfill
 
-`server/scripts/backfill-legacy-ownership.ts` fills a missing `createdBy` on setlists and folders when exactly one live ownership lists them, and syncs `folder.setlistIds` with `setlist.groupIds` as a union; the rules live in `src/utils/legacyOwnership.ts`. Run `yarn backfill:legacy` in `server/` (connects through `connectToDB()` with `server/.env`) for a dry-run report of counts and ids, review it, then `yarn backfill:legacy --apply` to write; `--uri=<mongodb uri>` targets another database, such as a local one, instead of the `MONGO_*` settings. Reruns are no-ops.
+`src/utils/legacyOwnership.ts` holds the rules for repairing legacy MongoDB data: fill a missing `createdBy` on setlists and folders when exactly one live ownership lists them, and merge `folder.setlistIds` with `setlist.groupIds` as a union. The one-off MongoDB → Postgres import script (#34) applies that plan while loading; ownership entry ids are stored without foreign keys, while dangling song, setlist, or folder references in links are skipped because those tables have foreign keys.
 
 ## Auth Flow
 
@@ -368,10 +375,11 @@ User profiles from the main site carry personal data about real congregation mem
 
 ## Environment Variables
 
-- `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_URI`, `MONGO_DB`, `MONGO_REPLICA_SET`, `MONGO_AUTH_SOURCE`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
+- `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `DATABASE_URL` (Postgres connection string; Neon's pooled `-pooler` URL with `sslmode=require` works), `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
+- `DATABASE_URL_TEST` (shell only, never in `.env`): a disposable Postgres database for `yarn test`; the integration suite migrates it and truncates every table, and is skipped when unset (CI runs without it).
 - `ui/.env`: `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL`. Required for `yarn start` and `yarn build`.
 - `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/` when `app.ts` runs directly. The `dev` script sets it through `cross-env`.
-- Vercel project (all environments): `JWT_KEY`, `MAIN_URL`, `BASE_URL` (the public origin `publicLink` is built from), `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_URI`, `MONGO_DB`, `MONGO_REPLICA_SET`, `MONGO_AUTH_SOURCE` for the `server` service at runtime, and `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL` for the `ui` service at build time. `PORT` is not used on Vercel.
+- Vercel project (all environments): `JWT_KEY`, `MAIN_URL`, `BASE_URL` (the public origin `publicLink` is built from), `DATABASE_URL` (the Neon pooled `-pooler` connection string with `sslmode=require`) for the `server` service at runtime, and `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL` for the `ui` service at build time. `PORT` is not used on Vercel.
 
 ## CI / Deploy (`.github/workflows/`)
 
@@ -392,12 +400,12 @@ Read `.claude/docs/commit-convention.md` and `.claude/docs/pr-description.md` be
 4. Public routes cannot take `allowedAccessTypes`; use `optionalAuth` when a public endpoint must know who is calling.
 5. `requireAuth` is authentication, not authorisation. Check ownership on writes with the helpers in `utils/authorization.ts`.
 6. `t3ch` is an access type, not a typo. The UI's `UserAccessType` enum knows only `admin` and `user`.
-7. Every model has `isDeleted`; filter it on every read and update.
+7. Every top-level table has `is_deleted`; filter it on every read and update. Soft-deleted songs still appear inside a setlist's populated `songs`, as they did under Mongoose `populate`.
 8. Server tests rely on `node --test` expanding `'src/**/*.test.ts'`, which needs Node 21+; on Node 20 pass the files explicitly.
 9. On Vercel the SPA is the `ui` service, never the Express app, and `express.static` is ignored there. Locally use the CRA dev server on :3000.
 10. `#/` imports do not resolve in CRA at runtime. Use relative imports.
 11. `useUser()` hits the network on every mount; do not call it in list items.
-12. `isObjectIdString` requires a 24-character hex string; Mongoose's own `isValidObjectId` also accepts any 12-character string, so don't use it for request input.
+12. `isObjectIdString` requires a 24-character hex string in either case; repositories lowercase ids before querying, so compare stored ids against `toObjectId(id)`, not the raw request value.
 13. Vercel builds with `CI=1`, so a CRA warning fails the `ui` deploy. Check with `CI=true yarn build` in `ui/`. `ui/.eslintrc.js` is its own ESLint root (CRA + `@typescript-eslint/recommended` + single quotes and semicolons) because `ui/` and the root install different `@typescript-eslint` versions; edit it, not the root config, for UI rules.
 14. Route `key`s in `routes.ts` must be unique, and React keys from data (`_id`), not indexes.
 
