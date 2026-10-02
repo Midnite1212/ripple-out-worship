@@ -80,7 +80,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
     (
       message: string,
       severity: 'success' | 'error' | 'warning' | 'info' = 'success',
-      showRefreshButton: boolean = false
+      showRefreshButton = false
     ) => {
       setSnackbar({
         open: true,
@@ -173,7 +173,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
 
   const deleteGroup = useCallback(async () => {
     try {
-      const { status } = await axios.put(`/api/groups/delete`, {
+      const { status } = await axios.put('/api/groups/delete', {
         params: {
           id: folderId,
         },
@@ -253,8 +253,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
         onClose={members.handleCloseRemoveModal}
         onConfirm={members.handleConfirmRemove}
         title="Remove Person"
-        message={`Are you sure you want to remove ${members.personToRemove
-          ?.fullName} from the folder "${folderName}"? ${`\n\n`} This action cannot be undone.`}
+        message={`Are you sure you want to remove ${members.personToRemove?.fullName} from the folder "${folderName}"? \n\n This action cannot be undone.`}
         confirmText="Remove"
         confirmColor="error"
       />
@@ -264,7 +263,7 @@ const SetlistFolderDrawer = (props: SetlistFolderDrawerProps) => {
         onClose={handleCloseDeleteFolderModal}
         onConfirm={handleConfirmDeleteFolder}
         title="Delete Folder"
-        message={`Are you sure you want to delete the folder "${folderName}"?${`\n\n`} This action cannot be undone and will remove all associated data.`}
+        message={`Are you sure you want to delete the folder "${folderName}"?\n\n This action cannot be undone and will remove all associated data.`}
         confirmText="Delete"
         confirmColor="error"
       />

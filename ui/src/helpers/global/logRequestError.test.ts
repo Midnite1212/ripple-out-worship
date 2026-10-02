@@ -8,7 +8,7 @@ describe('logRequestError', () => {
   let consoleError: jest.SpyInstance;
 
   beforeEach(() => {
-    consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

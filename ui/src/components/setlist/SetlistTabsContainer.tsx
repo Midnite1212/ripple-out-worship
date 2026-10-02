@@ -30,8 +30,6 @@ interface TabPanelProps {
   value: number;
 }
 
-interface SetlistTabsContainerProps {}
-
 interface SnackbarState {
   open: boolean;
   message: string;
@@ -53,7 +51,7 @@ const SetlistTabPanel: FC<TabPanelProps> = ({ children, value, index, ...other }
   );
 };
 
-const SetlistTabsContainer: FC<SetlistTabsContainerProps> = () => {
+const SetlistTabsContainer: FC = () => {
   const ownership = useOwnership();
   const navigate = useNavigate();
   const location = useLocation();

@@ -63,8 +63,8 @@ export const themeOptions = [
   'Church / Unity',
   'Dependence',
   'Freedom / Overcoming Sin',
-  `God's Faithfulness`,
-  `God's Presence`,
+  "God's Faithfulness",
+  "God's Presence",
   'Holiness / Purity',
   'Holy Spirit',
   'Hope',
@@ -78,7 +78,7 @@ export const themeOptions = [
   'Surrender / Sacrifice',
   'Thankfulness/Gratitude',
   'The Cross',
-  `Worship / Adoration / Praise`,
+  'Worship / Adoration / Praise',
 ];
 
 export const displayResultOptions = [

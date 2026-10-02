@@ -57,7 +57,7 @@ const LoginContainer: React.FC = () => {
 
   const handleEmailLogin: SubmitHandler<LoginFormFields> = async (data) => {
     try {
-      const payload = await axios.post<string>(`/external-api/auth/login`, {
+      const payload = await axios.post<string>('/external-api/auth/login', {
         emailAddress: data.email,
         password: data.password ?? '',
       });
