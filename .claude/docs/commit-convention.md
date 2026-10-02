@@ -1,6 +1,6 @@
 # Commit, Branch, and PR Title Convention
 
-This repo does **not** use Conventional Commits, even though `commitlint.config.js` extends `config-conventional`; its custom rule overrides the type checks. Tracking is GitHub Issues on `Harvest-Mission-Global/ripple-out-worship`, and every commit, branch, and PR is linked to an issue number.
+This repo does **not** use Conventional Commits, even though `commitlint.config.js` extends `config-conventional`; its custom rule overrides the type checks. Tracking is GitHub Issues on `Midnite1212/ripple-out-worship` (a self-hosted fork of `Harvest-Mission-Global/ripple-out-worship`), and every commit, branch, and PR is linked to an issue number.
 
 ## Commit subject
 
@@ -27,7 +27,7 @@ GH-119: Fixed and enhanced logic for save setlist function
 
 Avoid the shapes that slipped into history without the hook (`196 edit setlist bugs improvement`, `fix: make song code optional`, `fix misc`).
 
-No issue yet? Open one first with `gh issue create -R Harvest-Mission-Global/ripple-out-worship` and use its number. `GH-1` appears in history as a fallback for cross-cutting fixes; prefer a real issue.
+No issue yet? Open one first with `gh issue create -R Midnite1212/ripple-out-worship` and use its number. `GH-1` appears in history as a fallback for cross-cutting fixes; prefer a real issue.
 
 ## Branch name
 
