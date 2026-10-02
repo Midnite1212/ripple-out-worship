@@ -1,5 +1,37 @@
 import { ChordColors, flatMusicKeysOptions, sharpMusicKeysOptions } from '../../constants';
 
+const NOTE = '[A-Ga-g][#b]?';
+const QUALITY_TOKEN = 'maj|min|dim|aug|sus|add|M|m|°|ø|\\+|6\\/9|[#b]?\\d+';
+const QUALITY = `(?:${QUALITY_TOKEN}|\\((?:${QUALITY_TOKEN}|,)+\\))*`;
+const CHORD_PATTERN = new RegExp(`^(\\s*)(${NOTE})(${QUALITY})(?:\\/(${NOTE}))?(\\s*)$`);
+
+const KEY_PATTERN = /^([A-G][#b]?)m?$/;
+
+export const getNoteIndex = (note: string) =>
+  flatMusicKeysOptions.indexOf(note) === -1
+    ? sharpMusicKeysOptions.indexOf(note)
+    : flatMusicKeysOptions.indexOf(note);
+
+const normaliseNote = (note: string) => note[0].toUpperCase() + note.slice(1);
+
+const parseChord = (chord: string) => {
+  const match = chord.match(CHORD_PATTERN);
+  if (!match) return undefined;
+
+  const [, leading, root, quality, bass, trailing] = match;
+  const parsed = {
+    leading,
+    root: normaliseNote(root),
+    quality,
+    bass: bass ? normaliseNote(bass) : undefined,
+    trailing,
+  };
+  if (getNoteIndex(parsed.root) === -1 || (parsed.bass && getNoteIndex(parsed.bass) === -1)) {
+    return undefined;
+  }
+  return parsed;
+};
+
 export const searchChordColor = (chord: string): string | undefined => {
   const chordKey = Object.keys(ChordColors).find(
     (key) => key.toLowerCase() === chord.toLowerCase()
@@ -8,73 +40,41 @@ export const searchChordColor = (chord: string): string | undefined => {
 };
 
 export const getColor = (chord: string) => {
-  const chordPattern = /^([A-G][#b]?)(m)?/;
-  const match = chord.match(chordPattern);
+  const parsed = parseChord(chord);
+  if (!parsed) return undefined;
 
-  if (!match) return undefined;
-
-  const rootNote = match[1];
-  const isMinor = match[2] === 'm';
-
-  const baseChord = isMinor ? `${rootNote}m` : rootNote;
-
-  return searchChordColor(baseChord);
+  const isMinor = /^m(?!aj)/.test(parsed.quality);
+  return searchChordColor(isMinor ? `${parsed.root}m` : parsed.root);
 };
 
-export const getNoteIndex = (note: string) =>
-  flatMusicKeysOptions.indexOf(note) === -1
-    ? sharpMusicKeysOptions.indexOf(note)
-    : flatMusicKeysOptions.indexOf(note);
-
-export const getRootNote = (note: string): string | undefined => {
-  if (!/^[A-Ga-g]/.test(note)) return undefined;
-  const root = note.length > 1 && ['#', 'b'].includes(note[1]) ? note.slice(0, 2) : note[0];
-  const normalisedRoot = root[0].toUpperCase() + root.slice(1);
-  return getNoteIndex(normalisedRoot) === -1 ? undefined : normalisedRoot;
+const parseSongKey = (key: string | undefined) => {
+  const root = key?.match(KEY_PATTERN)?.[1];
+  return {
+    isFlat: key?.[1] === 'b',
+    keyIndex: root ? Math.max(0, getNoteIndex(root)) : 0,
+  };
 };
 
 export const getTransposeOffset = (originalKey: string | undefined, changeKey: number) => {
-  const originalChordIndex =
-    sharpMusicKeysOptions.indexOf(originalKey ?? 'C') === -1
-      ? flatMusicKeysOptions.indexOf(originalKey ?? 'C')
-      : sharpMusicKeysOptions.indexOf(originalKey ?? 'C');
-  const chordDifference = changeKey - originalChordIndex;
+  const chordDifference = changeKey - parseSongKey(originalKey).keyIndex;
   return chordDifference < 0 ? chordDifference + 12 : chordDifference;
 };
 
 export const transposeChord = (chord: string, transpossedChordIndex: number, useFlat: boolean) => {
-  const transposeRoot = (root: string) =>
+  const parsed = parseChord(chord);
+  if (!parsed) return chord;
+
+  const { leading, root, quality, bass, trailing } = parsed;
+  const transposeNote = (note: string) =>
     (useFlat ? flatMusicKeysOptions : sharpMusicKeysOptions)[
-      (getNoteIndex(root) + transpossedChordIndex) % 12
+      (getNoteIndex(note) + transpossedChordIndex) % 12
     ];
 
-  const chordParts = chord.split('/');
-  const baseChord = chordParts[0];
-  const bassNote = chordParts[1];
-
-  let transpossedChord = chord;
-  const baseRoot = getRootNote(baseChord);
-  if (baseRoot) {
-    transpossedChord = transposeRoot(baseRoot) + baseChord.slice(baseRoot.length);
-    if (bassNote) {
-      const bassRoot = getRootNote(bassNote);
-      transpossedChord += '/' + (bassRoot ? transposeRoot(bassRoot) : bassNote);
-    }
-  }
-  return transpossedChord;
+  return (
+    leading + transposeNote(root) + quality + (bass ? `/${transposeNote(bass)}` : '') + trailing
+  );
 };
 
-export const getInitialSongKey = (originalKey: string | undefined) => {
-  const key = originalKey ?? 'C';
-  const isFlat = key[1] === 'b';
-  return {
-    isFlat,
-    keyIndex: Math.max(0, (isFlat ? flatMusicKeysOptions : sharpMusicKeysOptions).indexOf(key)),
-  };
-};
+export const getInitialSongKey = (originalKey: string | undefined) => parseSongKey(originalKey);
 
-export const getSetlistStartingKey = (startingKey: string) => {
-  const isFlat = startingKey.endsWith('b');
-  const keyOptions = isFlat ? flatMusicKeysOptions : sharpMusicKeysOptions;
-  return { isFlat, keyIndex: Math.max(0, keyOptions.indexOf(startingKey)) };
-};
+export const getSetlistStartingKey = (startingKey: string) => parseSongKey(startingKey);

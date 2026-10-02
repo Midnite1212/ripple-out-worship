@@ -100,8 +100,24 @@ describe('SongsLyrics', () => {
     expect(paragraphCount(buildLyricsDom(undefined, { changeKey: 0 }))).toBe(0);
   });
 
-  it('shifts every chord one semitone up when the original key is unknown', () => {
-    const song = makeSong('{Verse}\n[C]Hello', 'Am');
-    expect(chipLabels(buildLyricsDom(song, { changeKey: 0 }))).toEqual(['Verse', 'C#']);
+  it.each(['', 'H'])('reads unknown original key %p as C', (originalKey) => {
+    const song = makeSong('{Verse}\n[C]Hello', originalKey);
+    expect(chipLabels(buildLyricsDom(song, { changeKey: 0 }))).toEqual(['Verse', 'C']);
+    expect(chipLabels(buildLyricsDom(song, { changeKey: 2 }))).toEqual(['Verse', 'D']);
+  });
+
+  it('reads a minor original key by its root', () => {
+    const song = makeSong('{Verse}\n[Am]Hello [C]world', 'Am');
+    expect(chipLabels(buildLyricsDom(song, { changeKey: 9 }))).toEqual(['Verse', 'Am', 'C']);
+    expect(chipLabels(buildLyricsDom(song, { changeKey: 11 }))).toEqual(['Verse', 'Bm', 'D']);
+  });
+
+  it('keeps bracketed words that are not chords', () => {
+    const song = makeSong('{Verse}\n[Chorus]Hello [bridge]world', 'C');
+    expect(chipLabels(buildLyricsDom(song, { changeKey: 2 }))).toEqual([
+      'Verse',
+      'Chorus',
+      'bridge',
+    ]);
   });
 });

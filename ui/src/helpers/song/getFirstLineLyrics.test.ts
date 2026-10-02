@@ -33,8 +33,9 @@ describe('getFirstLineLyrics', () => {
     expect(getFirstLineLyrics('Hello {x} world')).toBe('Hello  world');
   });
 
-  it('keeps empty brackets and braces', () => {
-    expect(getFirstLineLyrics('[]Hello{}')).toBe('[]Hello{}');
+  it('removes empty brackets and braces', () => {
+    expect(getFirstLineLyrics('[]Hello{}')).toBe('Hello');
+    expect(getFirstLineLyrics('{}\n[]\n[G]Amazing [] grace')).toBe('Amazing  grace');
   });
 
   it('returns an empty string when there are only chords and headers', () => {
