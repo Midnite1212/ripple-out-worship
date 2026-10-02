@@ -80,7 +80,6 @@ export const themeOptions = [
   'The Cross',
   `Worship / Adoration / Praise`,
 ];
-export const themeSelectionLimit = 3;
 
 export const displayResultOptions = [
   'Themes',
@@ -95,7 +94,7 @@ export const displayResultOptions = [
 // register/login form
 export const formSpacing = { xs: 2, sm: 2, md: 3, lg: 3, xl: 3 };
 
-export const formWidth = { xs: '85vw', sm: '60w', md: '60vw', lg: '40vw', xl: '30vw' };
+export const formWidth = { xs: '85vw', sm: '60vw', md: '60vw', lg: '40vw', xl: '30vw' };
 
 //chord colors:
 export const ChordColors: Record<string, string> = {

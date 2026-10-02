@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isAxiosError } from 'axios';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { useDispatch } from 'react-redux';
 import { signin } from '../../reducers/userSlice';
@@ -19,7 +20,7 @@ import { z } from 'zod';
 import { LoginFormFields } from '../../types/form.types';
 import { formSpacing } from '../../constants';
 import { emailValidator, passwordValidator } from './helpers/zod.validators';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -29,6 +30,13 @@ const loginValidationSchema = z.object({
   email: emailValidator,
   password: passwordValidator,
 });
+
+const GENERIC_LOGIN_ERROR = 'Could not log in. Please try again.';
+
+const getLoginErrorMessage = (error: unknown) => {
+  const status = isAxiosError(error) ? error.response?.status : undefined;
+  return status === 401 || status === 500 ? 'Invalid email or wrong password' : GENERIC_LOGIN_ERROR;
+};
 
 const LoginContainer: React.FC = () => {
   const { register, handleSubmit, formState } = useForm<LoginFormFields>({
@@ -41,35 +49,40 @@ const LoginContainer: React.FC = () => {
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
+
+  const redirectFrom: unknown = location.state?.from;
+  const redirectPath = typeof redirectFrom === 'string' ? redirectFrom : '/';
 
   const handleEmailLogin: SubmitHandler<LoginFormFields> = async (data) => {
     try {
-      const payload = await axios.post(`/external-api/auth/login`, {
+      const payload = await axios.post<string>(`/external-api/auth/login`, {
         emailAddress: data.email,
         password: data.password ?? '',
       });
       dispatch(signin(payload.data));
       setInvalidLogin('');
-      navigate('/');
-    } catch (error: any) {
-      if (error?.response?.status === 500 || error?.response?.status === 401) {
-        setInvalidLogin('Invalid email or wrong password');
-      }
-      console.log(error);
+      navigate(redirectPath);
+    } catch (error: unknown) {
+      setInvalidLogin(getLoginErrorMessage(error));
     }
   };
 
   const onGoogleSuccessLogin = async ({ credential }: { credential?: string }) => {
+    if (!credential) {
+      setInvalidLogin(GENERIC_LOGIN_ERROR);
+      return;
+    }
     try {
-      const { data } = await axios.post('/external-api/auth/login-google', {
+      const { data } = await axios.post<string>('/external-api/auth/login-google', {
         tokenId: credential,
       });
       dispatch(signin(data));
       setInvalidLogin('');
-      navigate('/');
-    } catch (e) {
-      console.log('Google login error: ', e);
+      navigate(redirectPath);
+    } catch {
+      setInvalidLogin(GENERIC_LOGIN_ERROR);
     }
   };
 
@@ -114,7 +127,7 @@ const LoginContainer: React.FC = () => {
                 {...register('password', {
                   required: 'Required',
                 })}
-                autoComplete={'password'}
+                autoComplete={'current-password'}
                 fullWidth
                 error={!!errors?.password?.message}
                 helperText={errors?.password?.message}
@@ -135,7 +148,8 @@ const LoginContainer: React.FC = () => {
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
               <Link
-                href="/password/recover"
+                component={RouterLink}
+                to="/password/recover"
                 textAlign="right"
                 underline={'hover'}
                 color="secondary"
@@ -152,7 +166,7 @@ const LoginContainer: React.FC = () => {
             <Stack display="flex" justifyContent="center" alignItems="center" spacing={2}>
               <Button
                 type={'submit'}
-                style={{ borderRadius: '30px' }}
+                sx={{ borderRadius: '30px' }}
                 color={'secondary'}
                 variant={'contained'}
                 fullWidth
@@ -169,6 +183,7 @@ const LoginContainer: React.FC = () => {
                 text="signin_with"
                 use_fedcm_for_prompt={true}
                 onSuccess={onGoogleSuccessLogin}
+                onError={() => setInvalidLogin(GENERIC_LOGIN_ERROR)}
               />
               <Stack
                 direction={'row'}
