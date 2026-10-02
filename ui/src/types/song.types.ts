@@ -39,7 +39,7 @@ export type SongCardProps = {
   createdBy: User;
   lastUpdatedBy: User;
   filterData?: SongSearchFilter;
-  isVerified: Boolean;
+  isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
   showDetails?: boolean;

@@ -32,7 +32,7 @@ const useSetlistEditorData = (
     if (setlistId === '') return;
 
     try {
-      const { data, status } = await axios.get<Setlist>(`/api/setlists/get`, {
+      const { data, status } = await axios.get<Setlist>('/api/setlists/get', {
         params: {
           id: setlistId,
         },

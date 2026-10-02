@@ -199,7 +199,7 @@ export default SongDeleteDialog;
 
 ### TypeScript
 
-- No new `any`. Type API responses with the types in `types/` (`axios.get<SongSchema[]>(…)`) and use `unknown` plus narrowing in `catch`. ESLint allows `any`; that is not permission.
+- No new `any`. Type API responses with the types in `types/` (`axios.get<SongSchema[]>(…)`) and use `unknown` plus narrowing in `catch`. ESLint enforces `no-explicit-any` as an error.
 - No non-null assertions (`!`) on fetched data or env vars in new code; guard instead.
 - No `as` casts to paper over a wrong type. Fix the type.
 - `ui/tsconfig.json` is strict. Keep `yarn tsc --noEmit` at 0 errors.
@@ -209,7 +209,7 @@ export default SongDeleteDialog;
 - Functional components with hooks; arrow functions; `const`/`let`; async/await.
 - Ternary for either/or rendering, `&&` only for render-if-true with a boolean left side (`items.length > 0 &&`, never `items.length &&`), complex conditions extracted to a named `const`.
 - Stable `key`s from data (`song._id`), not array indexes, for any list that can reorder, filter, or change.
-- `useEffect` dependency arrays must be complete. Do not add to the 27 `react-hooks/exhaustive-deps` warnings; fix the effect or move the function inside it.
+- `useEffect` dependency arrays must be complete. `react-hooks/exhaustive-deps` is at 0 warnings and `yarn lint` runs with `--max-warnings=0`; fix the effect or move the function inside it.
 - Reuse library code over hand-rolled logic: dayjs for dates, zod for validation, MUI components over custom HTML.
 - Produce valid HTML. MUI `Typography` renders `<p>` by default; nesting it inside a `Button` or another `Typography` yields invalid DOM. Use the `component` prop.
 - Default to no comments. If a line needs explaining, rename the symbol. A comment is for a _why_ the code cannot say.
@@ -388,7 +388,7 @@ Read `.claude/docs/commit-convention.md` and `.claude/docs/pr-description.md` be
 10. `#/` imports do not resolve in CRA at runtime. Use relative imports.
 11. `useUser()` hits the network on every mount; do not call it in list items.
 12. `isObjectIdString` requires a 24-character hex string; Mongoose's own `isValidObjectId` also accepts any 12-character string, so don't use it for request input.
-13. The CI build sets `CI=false`, so warnings never fail a deploy. Treat them as errors locally. `.eslintignore` does not exclude `ui/build/`, so delete it before `yarn lint` or the bundle floods the output with errors.
+13. The CI build sets `CI=false`, so warnings never fail a deploy. Treat them as errors locally. `ui/.eslintrc.js` is its own ESLint root (CRA + `@typescript-eslint/recommended` + single quotes and semicolons) because `ui/` and the root install different `@typescript-eslint` versions; edit it, not the root config, for UI rules.
 14. Route `key`s in `routes.ts` must be unique, and React keys from data (`_id`), not indexes.
 
 ## Tooling
