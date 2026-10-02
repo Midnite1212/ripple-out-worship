@@ -1,11 +1,11 @@
-import { createGroup, getGroup, updateGroup, deleteGroup } from '../controllers/group.controllers';
+import { createGroup, deleteGroup, getGroup, updateGroup } from '../controllers/group.controllers';
 import { createPermissionRouter } from '../policies';
 
-const router = createPermissionRouter('/groups');
+const router = createPermissionRouter();
 
-router.post('/create', createGroup);
-router.get('/get', getGroup);
-router.put('/update', updateGroup);
-router.put('/delete', deleteGroup);
+router.post('/groups/create', createGroup);
+router.get('/groups/get', getGroup);
+router.put('/groups/update', updateGroup);
+router.put('/groups/delete', deleteGroup);
 
 export default router.getRouter();

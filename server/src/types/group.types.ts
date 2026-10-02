@@ -6,8 +6,6 @@ type GroupSchema = {
   setlistIds: Types.Array<Types.ObjectId>;
   createdBy: Types.ObjectId;
   lastUpdatedBy: Types.ObjectId;
-  createdAt: Date;
-  lastUpdatedAt: Date;
   isDeleted: boolean;
 };
 
