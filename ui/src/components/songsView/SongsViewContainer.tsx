@@ -1,16 +1,16 @@
 import { Container, Box, Stack, Typography, Button } from '@mui/material';
 import { FC, ReactElement, useState, useEffect, useCallback } from 'react';
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { SongViewSchema } from '../../types/song.types';
 import { customAxios as axios } from '../custom/customAxios';
-import { AxiosResponse } from 'axios';
 import SongsTitleCard from './SongsTitleCard';
 import SongsButtonCard from './SongsButtonsCard';
 import { useOwnership } from '../../helpers/customHooks';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { specificSongsTabletWidth } from '../../constants';
 import EditIcon from '@mui/icons-material/Edit';
+import { logRequestError } from '../../helpers/global';
 
 const SongsViewContainer: FC = (): ReactElement => {
   const navigate = useNavigate();
@@ -19,20 +19,21 @@ const SongsViewContainer: FC = (): ReactElement => {
   // Get user information
   const ownership = useOwnership();
 
-  const id: string = window.location.pathname.split('/')[2];
+  const { id } = useParams();
   const [song, setSong] = useState<SongViewSchema>();
+  const [errorMessage, setErrorMessage] = useState('');
 
   const getSongs = useCallback(async () => {
-    const response: AxiosResponse<SongViewSchema> = await axios.get(`/api/songs/get`, {
-      params: { id: id },
-    });
-    const { data, status } = response;
+    if (!id) return;
     try {
-      if (status === 200) {
-        setSong(data);
-      }
-    } catch (error) {
-      console.log(error);
+      const { data } = await axios.get<SongViewSchema>('/api/songs/get', {
+        params: { id: id },
+      });
+      setErrorMessage('');
+      setSong(data);
+    } catch (error: unknown) {
+      logRequestError('Error fetching song:', error);
+      setErrorMessage('Could not load this song. Please try again.');
     }
   }, [id]);
 
@@ -58,7 +59,7 @@ const SongsViewContainer: FC = (): ReactElement => {
           <Typography
             sx={{
               fontSize: '12px',
-              color: '#D1D1D1',
+              color: 'onSurface.neutral',
               fontWeight: 500,
               fontFamily: 'DM Sans, sans-serif',
             }}
@@ -85,7 +86,7 @@ const SongsViewContainer: FC = (): ReactElement => {
             paddingRight: '1.5rem',
           }}
         >
-          <Box sx={{ width: '100' }}>
+          <Box sx={{ width: '100%' }}>
             <SongsTitleCard song={song} />
           </Box>
           {ownership?.accessType === 'admin' && (
@@ -95,18 +96,30 @@ const SongsViewContainer: FC = (): ReactElement => {
               startIcon={isMobile ? null : <EditIcon />}
               sx={{
                 borderWidth: '2px',
+                flexShrink: 0,
                 padding: isMobile ? '10px' : '10px 25px',
                 minWidth: isMobile ? 'unset' : 'inherit',
                 borderRadius: '40px',
-                borderColor: '#938F99',
-                color: '#D0BCFF',
+                borderColor: 'outline.main',
+                color: 'secondary.main',
                 textTransform: 'none',
               }}
             >
-              {isMobile ? <EditIcon /> : <Typography variant="subtitle1">Edit Song</Typography>}
+              {isMobile ? (
+                <EditIcon />
+              ) : (
+                <Typography variant="subtitle1" component="span">
+                  Edit Song
+                </Typography>
+              )}
             </Button>
           )}
         </Box>
+        {errorMessage ? (
+          <Typography variant="body2" color="error" sx={{ mb: 2 }}>
+            {errorMessage}
+          </Typography>
+        ) : null}
         <Stack direction={['row']}>
           <Box sx={{ marginBottom: ['10px', '3vh'], width: '100%' }}>
             <SongsButtonCard song={song} />

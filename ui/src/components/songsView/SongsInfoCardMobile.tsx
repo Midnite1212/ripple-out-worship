@@ -1,34 +1,34 @@
-import { Drawer, CardContent, Typography, Chip, Box, Grid, IconButton, Stack } from '@mui/material';
-import InfoIcon from '@mui/icons-material/Info';
+import { Box, CardContent, Drawer, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { SongViewSchema } from '../../types/song.types';
+import InfoIcon from '@mui/icons-material/Info';
+import SongInfoDetails from './SongInfoDetails';
 import { MOBILE_NAVBAR_HEIGHT } from '../../constants';
+import { SongViewSchema } from '../../types/song.types';
 
-interface SongsInfoCardMobileProps {
+type SongsInfoCardMobileProps = {
   song: SongViewSchema | undefined;
   open: boolean;
   onClose: () => void;
   isSetlistView?: boolean;
-}
+};
 
 const SongsInfoCardMobile = ({ song, open, onClose, isSetlistView }: SongsInfoCardMobileProps) => {
   if (!song) return null;
+
+  const bottomOffset = isSetlistView ? 0 : MOBILE_NAVBAR_HEIGHT;
 
   return (
     <Drawer
       anchor="bottom"
       open={open}
       onClose={onClose}
-      sx={{
-        bottom: isSetlistView ? 0 : MOBILE_NAVBAR_HEIGHT,
-        '& .MuiBackdrop-root': { bottom: isSetlistView ? 0 : MOBILE_NAVBAR_HEIGHT },
-      }}
+      sx={{ bottom: bottomOffset, '& .MuiBackdrop-root': { bottom: bottomOffset } }}
       PaperProps={{
         sx: {
           borderRadius: '20px 20px 0 0',
           bgcolor: 'primary.darkest',
           maxWidth: '100vw',
-          bottom: isSetlistView ? 0 : MOBILE_NAVBAR_HEIGHT,
+          bottom: bottomOffset,
         },
       }}
     >
@@ -36,68 +36,20 @@ const SongsInfoCardMobile = ({ song, open, onClose, isSetlistView }: SongsInfoCa
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} p={1}>
           <Box display="flex" alignItems="center">
             <InfoIcon sx={{ mr: 1, color: 'secondary.main' }} />
-            <Typography variant="subtitle1" color="#CCC2DC" fontWeight="bold">
+            <Typography variant="subtitle1" color="onSurface.secondary" fontWeight="bold">
               About The Song
             </Typography>
           </Box>
-          <IconButton onClick={onClose} size="small" sx={{ color: '#CCC2DC' }}>
+          <IconButton
+            aria-label="Close"
+            onClick={onClose}
+            size="small"
+            sx={{ color: 'onSurface.secondary' }}
+          >
             <CloseIcon />
           </IconButton>
         </Box>
-        <Grid container spacing={1}>
-          <Grid item xs={4}>
-            <Typography color="#938F99">Themes</Typography>
-          </Grid>
-          <Grid item xs={8}>
-            <Stack spacing={0.5}>
-              {song.themes.map((theme, i) => (
-                <Chip
-                  key={i}
-                  label={theme}
-                  sx={{
-                    background: '#2B2930',
-                    color: '#CCC2DC',
-                    width: 'fit-content',
-                    mr: 0.5,
-                    mb: 0,
-                  }}
-                  size="small"
-                />
-              ))}
-            </Stack>
-          </Grid>
-          <Grid item xs={4}>
-            <Typography color="#938F99">Tempo</Typography>
-          </Grid>
-          <Grid item xs={8}>
-            {song.tempo.map((t, i) => (
-              <Chip
-                key={i}
-                label={t}
-                sx={{ background: '#2B2930', color: '#CCC2DC', mr: 0.5, mb: 0.5 }}
-                size="small"
-              />
-            ))}
-          </Grid>
-          <Grid item xs={4}>
-            <Typography color="#938F99">Original Key</Typography>
-          </Grid>
-          <Grid item xs={8}>
-            <Typography color="#CCC2DC">{song.originalKey}</Typography>
-          </Grid>
-          <Grid item xs={4}>
-            <Typography color="#938F99">Year</Typography>
-          </Grid>
-          <Grid item xs={8}>
-            <Typography color="#CCC2DC">{song.year}</Typography>
-          </Grid>
-          <Grid item xs={4}>
-            <Typography color="#938F99">Code</Typography>
-          </Grid>
-          <Grid item xs={8}>
-            <Typography color="#CCC2DC">{song.code}</Typography>
-          </Grid>
-        </Grid>
+        <SongInfoDetails song={song} />
       </CardContent>
     </Drawer>
   );

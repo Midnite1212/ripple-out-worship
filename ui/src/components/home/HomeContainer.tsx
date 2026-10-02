@@ -1,50 +1,25 @@
-import { Box, Stack, Typography, IconButton, InputBase } from '@mui/material';
-import { FC, ReactElement, useEffect, useMemo } from 'react';
+import { Box, IconButton, Stack, Typography } from '@mui/material';
+import { FC, ReactElement } from 'react';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import QueueMusicIcon from '@mui/icons-material/QueueMusic';
-import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 import HomeTab from './HomeTab';
-import RecommendedSongCard from './RecommendedSongCard';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import { useState } from 'react';
 import GlobalSearchModal from '../navigation/GlobalSearchModal';
-import { useOwnership, useSongs } from '../../helpers/customHooks';
+import { useOwnedSetlists, useSongs } from '../../helpers/customHooks';
 import { SongSchema } from '../../types/song.types';
-import { Setlist } from '../../types/setlist.types';
-import { customAxios as axios } from '../custom/customAxios';
 import { MAXIMUM_DESKTOP_HEIGHT } from '../../constants';
 
 const HomeContainer: FC = (): ReactElement => {
   const theme = useTheme();
-  const ownership = useOwnership();
   const isDesktop = useMediaQuery(theme.breakpoints.up('sm'));
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [setlists, setSetlists] = useState<Setlist[]>([]);
+  const setlists = useOwnedSetlists();
   const onSearchOpen = () => setIsSearchOpen(true);
   const onSearchClose = () => setIsSearchOpen(false);
   const allSongs = useSongs() as SongSchema[];
-
-  useEffect(() => {
-    const fetchSetlists = async () => {
-      if (ownership.setlistIds.length > 0) {
-        try {
-          const setlistRes = await axios.get<Setlist[]>('/api/setlists/get');
-          if (setlistRes.status === 200) {
-            const filteredSetlists = setlistRes.data.filter((setlist) =>
-              ownership.setlistIds.some((setlistOwnership) => setlistOwnership.id === setlist._id)
-            );
-            setSetlists(filteredSetlists);
-          }
-        } catch (error) {
-          console.error('Error fetching setlists:', error);
-        }
-      }
-    };
-
-    fetchSetlists();
-  }, [ownership]);
 
   return (
     <>
@@ -63,8 +38,14 @@ const HomeContainer: FC = (): ReactElement => {
           px: ['0em', '1em'],
         }}
       >
-        <Stack direction={'column'} height="100%" width='100%'>
-          <Stack direction={['column', 'row']} spacing={2} gap={['25px', '12px']} height="100%" width={'100%'}>
+        <Stack direction={'column'} height="100%" width="100%">
+          <Stack
+            direction={['column', 'row']}
+            spacing={2}
+            gap={['25px', '12px']}
+            height="100%"
+            width={'100%'}
+          >
             <Box
               sx={{
                 pt: '2.5em',
@@ -111,8 +92,8 @@ const HomeContainer: FC = (): ReactElement => {
                 display: ['flex', 'none'],
                 alignItems: 'center',
                 alignSelf: 'center',
-                border: '1px solid #D0BCFE',
-                backgroundColor: '#4A4458',
+                border: (theme) => `1px solid ${theme.palette.secondary.main}`,
+                backgroundColor: 'secondary.lighter',
                 borderRadius: '28px',
                 px: 1,
               }}
@@ -124,7 +105,7 @@ const HomeContainer: FC = (): ReactElement => {
               <Box
                 sx={{
                   ml: 1,
-                  color: '#E8DEF8',
+                  color: 'onSecondaryContainer.main',
                   fontFamily: 'DM Sans, sans-serif',
                   fontSize: '14px',
                 }}

@@ -1,12 +1,10 @@
 import { Fragment } from 'react';
 
-const getLyricsPreview = (lyrics: string) => {
-  //get the first verse only
-  const firstVerse = lyrics.split('}')[1];
-  const cleanLyrics = firstVerse
-    ?.split('{')[0]
-    ?.replace(/\[.*?\]/g, '')
-    .trim();
+const getLyricsPreview = (lyrics?: string | null) => {
+  const cleanLyrics = (lyrics ?? '')
+    .split(/^\{[^}]*\}\s*$/m)
+    .map((block) => block.replace(/\[.*?\]/g, '').trim())
+    .find((block) => block !== '');
   if (cleanLyrics) {
     return cleanLyrics.split('\n').map((line, i) => (
       <Fragment key={i}>

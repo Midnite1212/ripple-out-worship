@@ -1,4 +1,5 @@
-import { Popover, Box, Typography, Grid, Chip } from '@mui/material';
+import { Popover, Typography } from '@mui/material';
+import SongInfoDetails from './SongInfoDetails';
 import { SongViewSchema } from '../../types/song.types';
 
 type SongInfoPopoverProps = {
@@ -25,7 +26,7 @@ const SongInfoPopover = ({ song, anchorEl, open, onClose }: SongInfoPopoverProps
           sx: {
             p: 2,
             background: '#201F25',
-            color: '#CCC2DC',
+            color: 'onSurface.secondary',
             borderRadius: 2,
             minWidth: 140,
             maxWidth: 340,
@@ -36,51 +37,10 @@ const SongInfoPopover = ({ song, anchorEl, open, onClose }: SongInfoPopoverProps
       }}
       disableRestoreFocus
     >
-      <Box>
-        <Typography variant="h5" fontWeight={700} mb={1} color="#CCC2DC">
-          About The Song
-        </Typography>
-        <Box sx={{ flexGrow: 1 }}>
-          <Grid container spacing={1}>
-            <Grid item xs={3} md={4}>
-              <Typography color="#938F99">Themes</Typography>
-            </Grid>
-            <Grid container item xs={9} md={8} spacing={1}>
-              {song.themes.map((theme: string, i: number) => (
-                <Grid item xs={12} key={i}>
-                  <Chip sx={{ background: '#2B2930', color: '#CCC2DC', mx: 0.5 }} label={theme} />
-                </Grid>
-              ))}
-            </Grid>
-            <Grid item xs={3} md={4}>
-              <Typography color="#938F99">Tempo</Typography>
-            </Grid>
-            <Grid item xs={9} md={8}>
-              {song.tempo.map((t: string, i: number) => (
-                <Chip sx={{ background: '#2B2930', color: '#CCC2DC', mx: 0.5 }} label={t} key={i} />
-              ))}
-            </Grid>
-            <Grid item xs={3} md={4}>
-              <Typography color="#938F99">Original Key</Typography>
-            </Grid>
-            <Grid item xs={9} md={8}>
-              <Typography color="#CCC2DC">{song.originalKey}</Typography>
-            </Grid>
-            <Grid item xs={3} md={4}>
-              <Typography color="#938F99">Year</Typography>
-            </Grid>
-            <Grid item xs={9} md={8}>
-              <Typography color="#CCC2DC">{song.year}</Typography>
-            </Grid>
-            <Grid item xs={3} md={4}>
-              <Typography color="#938F99">Code</Typography>
-            </Grid>
-            <Grid item xs={9} md={8}>
-              <Typography color="#CCC2DC">{song.code}</Typography>
-            </Grid>
-          </Grid>
-        </Box>
-      </Box>
+      <Typography variant="h5" fontWeight={700} mb={1} color="onSurface.secondary">
+        About The Song
+      </Typography>
+      <SongInfoDetails song={song} />
     </Popover>
   );
 };

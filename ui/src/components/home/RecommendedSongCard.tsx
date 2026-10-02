@@ -15,9 +15,9 @@ const RecommendedSongCard: FC<RecommendedSongCardProps> = ({
     <Box
       sx={{
         borderRadius: '12px',
-        backgroundColor: '#141218',
+        backgroundColor: 'primary.darkest',
         border: 1,
-        borderColor: '#49454F',
+        borderColor: 'outline.variant',
         p: 3,
         width: ['100%', '38%'],
         '&:hover': {

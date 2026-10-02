@@ -1,7 +1,8 @@
-import { Box, Typography } from '@mui/material';
+import { Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { forwardRef } from 'react';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import SearchResultRow from './SearchResultRow';
 
 type SongSearchResultProps = {
   _id: string;
@@ -26,31 +27,10 @@ const SongSearchResult = forwardRef<HTMLDivElement, SongSearchResultProps>((prop
   };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'row',
-        gap: '0.5rem',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        width: '100%',
-        p: '0.75rem',
-        borderRadius: '5px',
-        '&:hover, &:focus': {
-          backgroundColor: '#6750A4',
-        },
-        backgroundColor: isFocused ? '#6750A4' : '#211F26',
-        cursor: 'pointer',
-        outline: 'none',
-      }}
-      ref={ref}
-      onClick={handleSelect}
-    >
-      <MusicNoteIcon sx={{ color: '#CAC4D0' }} />
-      <Typography variant="body1" color="#CAC4D0">
-        {keyword === '' ? 'Explore all songs' : title}
-      </Typography>
-    </Box>
+    <SearchResultRow isFocused={isFocused} ref={ref} onClick={handleSelect}>
+      <MusicNoteIcon />
+      <Typography variant="body1">{keyword === '' ? 'Explore all songs' : title}</Typography>
+    </SearchResultRow>
   );
 });
 

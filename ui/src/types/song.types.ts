@@ -47,12 +47,8 @@ export type SongCardProps = {
 };
 
 export type SongSearchProps = {
-  songs: SongSchema[];
-  filterData: SongSearchFilter | undefined;
+  isMobile: boolean;
   setFilterData: React.Dispatch<React.SetStateAction<SongSearchFilter | undefined>>;
-  onClose: () => void;
-  setSearch?: React.Dispatch<React.SetStateAction<string>>;
-  isDesktop: boolean;
 };
 
 export type SongSearchFilter = {
@@ -77,6 +73,8 @@ export type SongViewSchema = {
   timeSignature: string[];
   tempo: string[];
   originalKey: string;
+  key?: string;
+  recommendedKeys?: string[];
   themes: string[];
   artist: string;
   year: string;

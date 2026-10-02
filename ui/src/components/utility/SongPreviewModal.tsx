@@ -21,7 +21,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ open, onClose, song
           transform: 'translate(-50%, -50%)',
           width: formWidth.xs,
           maxWidth: specificSongsMobileWidth,
-          bgcolor: '#2B2930',
+          bgcolor: 'surface.containerHigh',
           borderRadius: '10px',
           boxShadow: 2,
           p: '1.5rem',
@@ -47,7 +47,7 @@ const SongPreviewModal: React.FC<SongPreviewModalProps> = ({ open, onClose, song
             variant="contained"
             sx={{
               backgroundColor: '#D0BCFF',
-              color: '#381E72',
+              color: 'onPrimary.main',
             }}
           >
             Close

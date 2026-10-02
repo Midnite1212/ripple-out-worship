@@ -1,4 +1,4 @@
-import { Box, Container, Stack, Typography } from '@mui/material';
+import { Container, IconButton, Stack, Typography } from '@mui/material';
 import { SongCardProps, SongSchema } from '../../types/song.types';
 import { CardFields } from '../../constants';
 import { useState } from 'react';
@@ -49,7 +49,7 @@ const SongCard = (props: SongCardProps) => {
         sx={{
           borderRadius: '8px',
           border: 1,
-          borderColor: '#49454F',
+          borderColor: 'outline.variant',
           backgroundColor: 'primary.darkest',
           p: '1rem',
           '&:hover': {
@@ -78,16 +78,16 @@ const SongCard = (props: SongCardProps) => {
             </Typography>
           </Stack>
           <>
-            <Box sx={{ height: '30px', width: '30px' }}>
-              <VisibilityIcon
-                onClick={(event: any) => {
-                  event.stopPropagation();
-                  modalOpen ? handleClose() : handleOpen();
-                }}
-                // onMouseLeave={handleClose}
-                sx={{ color: 'secondary.main' }}
-              />
-            </Box>
+            <IconButton
+              aria-label="preview song"
+              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                event.stopPropagation();
+                modalOpen ? handleClose() : handleOpen();
+              }}
+              sx={{ height: '30px', width: '30px', p: 0 }}
+            >
+              <VisibilityIcon sx={{ color: 'secondary.main' }} />
+            </IconButton>
           </>
         </Stack>
         <Stack
@@ -112,13 +112,18 @@ const SongCard = (props: SongCardProps) => {
                       justifyContent={'flex-start'}
                       mr={isDesktop ? '1.25rem' : 1}
                     >
-                      <Typography variant="body2" color="#9E9E9E" minWidth={'fit-content'}>
+                      <Typography variant="body2" color="grey.500" minWidth={'fit-content'}>
                         {field}
                       </Typography>
                       {Array.isArray(fieldData[i]) ? (
                         <SongFieldArray data={fieldData[i]} />
                       ) : (
-                        <Typography variant="body2" color={'#CCC2DC'} align="left" noWrap>
+                        <Typography
+                          variant="body2"
+                          color={'onSurface.secondary'}
+                          align="left"
+                          noWrap
+                        >
                           {fieldData[i] ?? '-'}
                         </Typography>
                       )}
@@ -139,30 +144,49 @@ const SongCard = (props: SongCardProps) => {
                   >
                     {displayData[1] && (
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2" color="#9E9E9E" minWidth={'fit-content'}>
+                        <Typography variant="body2" color="grey.500" minWidth={'fit-content'}>
                           {CardFields[1]}
                         </Typography>
-                        <Typography variant="body2" color={'#CCC2DC'} align="left" noWrap>
-                          {fieldData[1] ?? '-'}
-                        </Typography>
+                        {Array.isArray(fieldData[1]) ? (
+                          <SongFieldArray data={fieldData[1]} />
+                        ) : (
+                          <Typography
+                            variant="body2"
+                            color={'onSurface.secondary'}
+                            align="left"
+                            noWrap
+                          >
+                            {fieldData[1] ?? '-'}
+                          </Typography>
+                        )}
                       </Stack>
                     )}
                     {displayData[2] && (
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2" color="#9E9E9E" minWidth={'fit-content'}>
+                        <Typography variant="body2" color="grey.500" minWidth={'fit-content'}>
                           {CardFields[2]}
                         </Typography>
-                        <Typography variant="body2" color={'#CCC2DC'} align="left" noWrap>
+                        <Typography
+                          variant="body2"
+                          color={'onSurface.secondary'}
+                          align="left"
+                          noWrap
+                        >
                           {fieldData[2] ?? '-'}
                         </Typography>
                       </Stack>
                     )}
                     {displayData[3] && (
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2" color="#9E9E9E" minWidth={'fit-content'}>
+                        <Typography variant="body2" color="grey.500" minWidth={'fit-content'}>
                           {CardFields[3]}
                         </Typography>
-                        <Typography variant="body2" color={'#CCC2DC'} align="left" noWrap>
+                        <Typography
+                          variant="body2"
+                          color={'onSurface.secondary'}
+                          align="left"
+                          noWrap
+                        >
                           {fieldData[3] ?? '-'}
                         </Typography>
                       </Stack>
@@ -186,13 +210,18 @@ const SongCard = (props: SongCardProps) => {
                         justifyContent={'flex-start'}
                         mr={1}
                       >
-                        <Typography variant="body2" color="#9E9E9E" minWidth={'fit-content'}>
+                        <Typography variant="body2" color="grey.500" minWidth={'fit-content'}>
                           {field}
                         </Typography>
                         {Array.isArray(fieldData[i]) ? (
                           <SongFieldArray data={fieldData[i]} />
                         ) : (
-                          <Typography variant="body2" color={'#CCC2DC'} align="left" noWrap>
+                          <Typography
+                            variant="body2"
+                            color={'onSurface.secondary'}
+                            align="left"
+                            noWrap
+                          >
                             {fieldData[i] ?? '-'}
                           </Typography>
                         )}

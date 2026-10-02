@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Box, Fade, InputAdornment, Modal, TextField, Typography } from '@mui/material';
+import { Box, Fade, InputAdornment, Modal, TextField, Typography, useTheme } from '@mui/material';
 
 import SongSearchResult from './searchModalComponents/SongSearchResult';
 import { useNavigate } from 'react-router-dom';
@@ -8,7 +8,6 @@ import { SongSchema } from '../../types/song.types';
 import { Setlist } from '../../types/setlist.types';
 import SearchIcon from '@mui/icons-material/Search';
 import RadioCard from './searchModalComponents/RadioCard';
-import { MOBILE_NAVBAR_HEIGHT } from '../../constants';
 
 type GlobalSearchModalProps = {
   isOpen: boolean;
@@ -19,69 +18,35 @@ type GlobalSearchModalProps = {
 
 const GlobalSearchModal = (props: GlobalSearchModalProps) => {
   const { isOpen, onClose, allSongs, allSetlists } = props;
+  const theme = useTheme();
 
   const radioFilters = ['Songs', 'Setlists'];
   const [radioFilter, setRadioFilter] = useState('Songs');
-
-  const [loading, setLoading] = useState(false);
-  const [filteredSongs, setFilteredSongs] = useState<SongSchema[]>([]);
-  const [filteredSetlists, setFilteredSetlists] = useState<Setlist[]>([]);
 
   const [searchString, setSearchString] = useState('');
   const filterKeyword = useMemo(() => searchString.trim().toLowerCase(), [searchString]);
 
   useEffect(() => {
-    setSearchString('');
-  }, [onClose]);
+    if (!isOpen) setSearchString('');
+  }, [isOpen]);
 
-  const memoizedFilteredSongs = useMemo(() => {
+  const filteredSongs = useMemo(() => {
     if (filterKeyword.length < 2 || allSongs.length === 0) return [];
-
-    setLoading(true);
-    const filteredSongs = allSongs.filter((song) => {
-      const songTitle = song.title.toLowerCase();
-
-      if (songTitle.includes(filterKeyword)) {
-        return true;
-      }
-
-      return false;
-    });
-    setLoading(false);
-    return filteredSongs;
+    return allSongs.filter((song) => song.title?.toLowerCase().includes(filterKeyword));
   }, [filterKeyword, allSongs]);
 
-  const memoizedFilteredSetlists = useMemo(() => {
+  const filteredSetlists = useMemo(() => {
     if (filterKeyword.length < 2 || allSetlists.length === 0) return [];
-
-    setLoading(true);
-    const filteredSetlists = allSetlists.filter((setlist) => {
-      const setlistName = setlist.name.toLowerCase();
-
-      if (setlistName.includes(filterKeyword)) {
-        return true;
-      }
-
-      return false;
-    });
-    setLoading(false);
-    return filteredSetlists;
+    return allSetlists.filter((setlist) => setlist.name?.toLowerCase().includes(filterKeyword));
   }, [filterKeyword, allSetlists]);
-
-  useEffect(() => {
-    setLoading(true);
-    if (radioFilter === 'Songs') {
-      setFilteredSongs(memoizedFilteredSongs);
-    } else {
-      setFilteredSetlists(memoizedFilteredSetlists);
-    }
-    setFocusedIndex(-1);
-    setLoading(false);
-  }, [filterKeyword, radioFilter, memoizedFilteredSongs, memoizedFilteredSetlists]);
 
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [filterKeyword, radioFilter]);
 
   useEffect(() => {
     if (isOpen && inputRef.current && focusedIndex === -1) {
@@ -95,7 +60,28 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
     const key = e.key;
     const results = radioFilter === 'Songs' ? filteredSongs : filteredSetlists;
 
-    if (key === 'ArrowDown') {
+    if (key === 'Escape') {
+      setFocusedIndex(-1);
+    } else if (key === 'Enter') {
+      e.preventDefault();
+      const focusedResult = focusedIndex !== -1 ? results[focusedIndex] : undefined;
+      if (focusedResult) {
+        navigate(
+          radioFilter === 'Songs'
+            ? `/song/${focusedResult._id}`
+            : `/setlist/view/${focusedResult._id}`
+        );
+      } else if (e.target === inputRef.current) {
+        navigate(
+          radioFilter === 'Songs' ? `/song?q=${encodeURIComponent(searchString)}` : '/setlist'
+        );
+      } else {
+        return;
+      }
+      onClose();
+    } else if (!results.length) {
+      return;
+    } else if (key === 'ArrowDown') {
       setFocusedIndex((prevIndex) => (prevIndex + 1) % results.length);
     } else if (key === 'ArrowUp') {
       setFocusedIndex((prevIndex) => {
@@ -105,19 +91,6 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
           return (prevIndex - 1 + results.length) % results.length;
         }
       });
-    } else if (key === 'Escape') {
-      setFocusedIndex(-1);
-    } else if (key === 'Enter') {
-      e.preventDefault();
-      if (focusedIndex !== -1) {
-        const category = radioFilter.toLowerCase();
-        if (category === 'songs') {
-          navigate(`/song/${(results[focusedIndex] as SongSchema)._id}`);
-        } else if (category === 'setlists') {
-          navigate(`/setlist/view/${(results[focusedIndex] as Setlist)._id}`);
-        }
-        onClose();
-      }
     }
   };
 
@@ -137,21 +110,6 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
       }
     }
   }, [focusedIndex]);
-
-  // Handle input keydown
-  const handleInputKeyDown = (event: { key: string }) => {
-    if (event.key === 'Enter') {
-      const category = radioFilter.toLowerCase();
-      if (category === 'songs') {
-        navigate(`/song?q=${searchString}`);
-      } else if (category === 'setlists') {
-        navigate(`/setlist`);
-      }
-      onClose();
-    } else if (event.key === 'Escape') {
-      onClose();
-    }
-  };
 
   const renderResults = () => {
     if (radioFilter === 'Songs') {
@@ -193,7 +151,7 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
             p: '0.75rem',
           }}
         >
-          <Typography variant="body1" color="#CAC4D0">
+          <Typography variant="body1" color="onSurface.variant">
             No songs found
           </Typography>
         </Box>
@@ -216,10 +174,11 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
     if (filteredSetlists && filteredSetlists.length > 0) {
       return filteredSetlists.map((setlist, index) => (
         <SetlistSearchResult
+          key={setlist._id}
           _id={setlist._id}
           name={setlist.name}
           keyword={filterKeyword}
-          ref={(el) => (resultRefs.current[0] = el as HTMLDivElement)}
+          ref={(el) => (resultRefs.current[index] = el as HTMLDivElement)}
           isFocused={index === focusedIndex}
           onClose={onClose}
         />
@@ -237,7 +196,7 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
           p: '0.75rem',
         }}
       >
-        <Typography variant="body1" color="#CAC4D0">
+        <Typography variant="body1" color="onSurface.variant">
           No setlists found
         </Typography>
       </Box>
@@ -252,7 +211,7 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
             position: 'fixed',
             top: ['0vh', '22.5vh'],
             left: ['0vw', '30vw'],
-            backgroundColor: '#171717',
+            backgroundColor: 'background.default',
             borderRadius: '10px',
             p: '1rem',
             width: ['100%', '40%'],
@@ -264,9 +223,9 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
               display: 'flex',
               flexDirection: 'column',
               gap: '1rem',
-              border: '1px solid #6750A4',
+              border: `1px solid ${theme.palette.primary.dark}`,
               borderRadius: '15px',
-              backgroundColor: '#211F26',
+              backgroundColor: 'surface.container',
               padding: '1rem',
             }}
           >
@@ -291,7 +250,7 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
                 display: 'flex',
                 alignItems: 'center',
                 width: '100%',
-                backgroundColor: '#211F26',
+                backgroundColor: 'surface.container',
               }}
             >
               <TextField
@@ -302,28 +261,27 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
                   style: {
                     fontFamily: 'DM Sans, sans-serif',
                     fontSize: '1rem',
-                    color: '#CAC4D0',
-                    background: '#211F26',
+                    color: theme.palette.onSurface.variant,
+                    background: theme.palette.surface.container,
                   },
                   disableUnderline: true,
                   startAdornment: (
                     <InputAdornment position="start">
-                      <SearchIcon sx={{ color: '#CAC4D0' }} />
+                      <SearchIcon sx={{ color: 'onSurface.variant' }} />
                     </InputAdornment>
                   ),
                 }}
                 value={searchString}
                 onChange={(e) => setSearchString(e.target.value)}
-                onKeyDown={handleInputKeyDown}
                 autoFocus
                 inputRef={inputRef}
                 onClick={() => setFocusedIndex(-1)}
                 sx={{
                   flexGrow: 1,
                   '& .MuiInputBase-root': {
-                    color: '#211F26',
+                    color: 'surface.container',
                     '&::placeholder': {
-                      color: '#211F26',
+                      color: 'surface.container',
                     },
                   },
                 }}
@@ -340,18 +298,12 @@ const GlobalSearchModal = (props: GlobalSearchModalProps) => {
                   backgroundColor: 'transparent',
                 },
                 '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'gray.5',
+                  backgroundColor: 'grey.500',
                   borderRadius: '3px',
                 },
               }}
             >
-              {loading ? (
-                <Box sx={{ fontSize: '1rem', color: 'black', p: 2, backgroundColor: '#211F26' }}>
-                  Loading...
-                </Box>
-              ) : (
-                renderResults()
-              )}
+              {renderResults()}
             </Box>
           </Box>
         </Box>

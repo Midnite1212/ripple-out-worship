@@ -25,7 +25,7 @@ const PageHeader = (props: PageHeaderProps) => {
           sm: TABLET_PAGE_HEADER_HEIGHT,
           lg: DESKTOP_PAGE_HEADER_HEIGHT,
         },
-        paddingBottom: '10px'
+        paddingBottom: '10px',
       }}
     >
       <Box
@@ -42,18 +42,18 @@ const PageHeader = (props: PageHeaderProps) => {
             borderRadius: '100%',
             padding: '12px',
             display: 'flex',
-            flexDir: 'column',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             '& svg': {
               fontSize: { xs: '24px', md: '28px', lg: '32px' },
             },
-            color: '#EADDFF',
+            color: 'primary.lightest',
           }}
         >
           {props.icon}
         </Box>
-        <Typography variant="h1" color="#FFFFFF">
+        <Typography variant="h1" color="common.white">
           {props.title}
         </Typography>
       </Box>
