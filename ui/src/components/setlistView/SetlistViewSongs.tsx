@@ -6,19 +6,17 @@ import { SongSetlistSchema, SongViewSchema } from '../../types/song.types';
 
 interface SetlistViewSongsProps {
   songs: SongSetlistSchema[];
-  userView?: boolean;
-  userHeader?: boolean;
 }
 
-const SetlistViewSongs = ({
-  songs,
-  userView = false,
-  userHeader = false,
-}: SetlistViewSongsProps) => {
+const SetlistViewSongs = ({ songs }: SetlistViewSongsProps) => {
   // Global state
   const [showChords, setShowChords] = useState(false);
   const [splitColumns, setSplitColumns] = useState(1);
-  const [selectedSong, setSelectedSong] = useState<SongViewSchema>(songs[0]);
+  const [selectedSong, setSelectedSong] = useState<SongViewSchema | undefined>(songs[0]);
+
+  useEffect(() => {
+    setSelectedSong((prev) => songs.find((song) => song._id === prev?._id) ?? songs[0]);
+  }, [songs]);
 
   // Refs for auto-scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -60,20 +58,6 @@ const SetlistViewSongs = ({
   const setSongRef = useCallback((songId: string, element: HTMLDivElement | null) => {
     songRefs.current[songId] = element;
   }, []);
-
-  // Auto-scroll when selectedSong changes
-  useEffect(() => {
-    if (!selectedSong) return;
-
-    const songId = selectedSong._id || `song-${songs.findIndex((s) => s._id === selectedSong._id)}`;
-
-    // Delay to ensure DOM is ready
-    const timeoutId = setTimeout(() => {
-      scrollToSong(songId);
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [selectedSong, songs, scrollToSong]);
 
   // Container styles
   const containerStyles = {
@@ -135,7 +119,7 @@ const SetlistViewSongs = ({
                   showChords={showChords}
                 />
               </Box>
-              {!isLastSong && <Divider sx={{ borderColor: '#938F99' }} />}
+              {!isLastSong && <Divider sx={{ borderColor: 'outline.main' }} />}
             </div>
           );
         })}

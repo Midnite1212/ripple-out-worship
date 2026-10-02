@@ -1,7 +1,4 @@
-import {
-  PUBLIC_SETLIST_FOOTER_HEIGHT,
-  PUBLIC_SETLIST_HEADER_HEIGHT,
-} from '../../constants';
+import { PUBLIC_SETLIST_FOOTER_HEIGHT, PUBLIC_SETLIST_HEADER_HEIGHT } from '../../constants';
 import { Box, styled } from '@mui/material';
 
 export const SetlistViewHeader = styled(Box)<{ isMobile: boolean }>(({ isMobile }) => ({
@@ -25,18 +22,20 @@ export const SetlistViewFooter = styled(Box)(({ theme }) => ({
   maxWidth: '100vw',
   height: PUBLIC_SETLIST_FOOTER_HEIGHT,
   maxHeight: PUBLIC_SETLIST_FOOTER_HEIGHT,
-  color: '#938F99',
+  color: theme.palette.outline.main,
   fontSize: '0.75rem',
 }));
 
 export const SetlistViewSongsControlChip = styled(Box)<{ isSelected: boolean }>(
-  ({ isSelected }) => ({
+  ({ isSelected, theme }) => ({
     display: 'flex',
     flexDirection: 'row',
     gap: '0.5rem',
     justifyContent: 'center',
-    border: isSelected ? '1px solid #4A4458' : '1px solid #938F99',
-    background: isSelected ? '#4A4458' : 'none',
+    border: `1px solid ${
+      isSelected ? theme.palette.secondary.lighter : theme.palette.outline.main
+    }`,
+    background: isSelected ? theme.palette.secondary.lighter : 'none',
     padding: '5px 10px',
     borderRadius: '0.5rem',
     cursor: 'pointer',
@@ -45,7 +44,7 @@ export const SetlistViewSongsControlChip = styled(Box)<{ isSelected: boolean }>(
     fontWeight: 500,
     fontFamily: 'DM Sans',
     '&:hover': {
-      borderColor: '#4A4458',
+      borderColor: theme.palette.secondary.lighter,
     },
   })
 );

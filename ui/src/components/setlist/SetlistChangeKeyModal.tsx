@@ -14,6 +14,13 @@ import { Close, KeyboardArrowDown, KeyboardArrowUp, Tune } from '@mui/icons-mate
 import HeaderWithIcon from '../custom/HeaderWithIcon';
 import { flatMusicKeysOptions, sharpMusicKeysOptions } from '../../constants';
 
+const getKeyPosition = (musicKey: string) => {
+  const sharpIndex = sharpMusicKeysOptions.indexOf(musicKey);
+  if (sharpIndex >= 0) return { isFlat: false, index: sharpIndex };
+  const flatIndex = flatMusicKeysOptions.indexOf(musicKey);
+  return { isFlat: flatIndex >= 0, index: Math.max(0, flatIndex) };
+};
+
 interface SetlistChangeKeyModalProps {
   open: boolean;
   onClose: () => void;
@@ -27,22 +34,16 @@ const SetlistChangeKeyModal: React.FC<SetlistChangeKeyModalProps> = ({
   song,
   handleSave,
 }) => {
-  const [count, setCount] = useState(
-    sharpMusicKeysOptions.indexOf(song.key ?? 'C') || flatMusicKeysOptions.indexOf(song.key ?? 'C')
-  );
-  const [useFlat, setUseFlat] = useState<boolean | null>(null);
-  const [key, setKey] = useState<string>(song.key ?? 'C');
+  const initialKey = song.key || song.originalKey || 'C';
+  const [count, setCount] = useState(() => getKeyPosition(initialKey).index);
+  const [useFlat, setUseFlat] = useState<boolean | null>(() => getKeyPosition(initialKey).isFlat);
+  const [key, setKey] = useState<string>(initialKey);
 
   useEffect(() => {
-    const count = sharpMusicKeysOptions.indexOf(song.key ?? 'C');
-    if (count >= 0) {
-      setUseFlat(false);
-      setCount(count);
-    } else {
-      setUseFlat(true);
-      setCount(flatMusicKeysOptions.indexOf(song.key ?? 'C'));
-    }
-  }, [song.key]);
+    const { isFlat, index } = getKeyPosition(initialKey);
+    setUseFlat(isFlat);
+    setCount(index);
+  }, [initialKey]);
 
   useEffect(() => {
     setKey(useFlat ? flatMusicKeysOptions[count] : sharpMusicKeysOptions[count]);
@@ -66,8 +67,8 @@ const SetlistChangeKeyModal: React.FC<SetlistChangeKeyModalProps> = ({
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: 400,
-          bgcolor: '#2B2930',
+          width: { xs: '90vw', sm: 400 },
+          bgcolor: 'surface.containerHigh',
           borderRadius: '10px',
           boxShadow: 2,
           p: '1.5rem',
@@ -161,8 +162,8 @@ const SetlistChangeKeyModal: React.FC<SetlistChangeKeyModalProps> = ({
             }
             variant="contained"
             sx={{
-              backgroundColor: '#D0BCFF',
-              color: '#381E72',
+              backgroundColor: 'secondary.main',
+              color: 'onPrimary.main',
             }}
           >
             Save
