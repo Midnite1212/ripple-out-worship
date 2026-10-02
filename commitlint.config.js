@@ -12,17 +12,16 @@ module.exports = {
       rules: {
         'commit-msg-format': ({ header }) => {
           let branchName = '';
-          let issueNumber = '';
           try {
             branchName = execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
-            issueNumber = branchName.match(/^\d+/);
           } catch (e) {
             return [false, 'Error getting branch name'];
           }
-          const commitMsgRegex = new RegExp(`^GH-${issueNumber}: .+$`);
+          const issueNumber = branchName.match(/^(\d+)/)?.[1];
+          const commitMsgRegex = new RegExp(`^GH-${issueNumber ?? '\\d+'}: .+$`);
 
           return [
-            commitMsgRegex.test(header),
+            commitMsgRegex.test(header ?? ''),
             'Commit message should be in the format: GH-{issue number}: {message}',
           ];
         },

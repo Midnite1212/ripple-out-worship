@@ -1,8 +1,4 @@
 {
-  "dependencies": {
-    "typescript": "^5.1.6",
-    "yarn": "^1.22.19"
-  },
   "devDependencies": {
     "@commitlint/cli": "^17.7.1",
     "@commitlint/config-conventional": "^17.7.0",
@@ -13,7 +9,8 @@
     "eslint-plugin-react": "^7.33.2",
     "husky": "^8.0.3",
     "lint-staged": "^14.0.1",
-    "prettier": "^3.0.2"
+    "prettier": "^3.0.2",
+    "typescript": "^5.1.6"
   },
   "scripts": {
     "lint": "eslint --ignore-path .eslintignore \"**/*.+(js|jsx|ts|tsx)\"",
