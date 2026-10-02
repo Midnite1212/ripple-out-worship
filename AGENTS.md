@@ -75,7 +75,7 @@ Most of `ui/src/components/` was written by junior volunteers over several sprin
 ## Development Commands
 
 ```bash
-# Install (three separate installs, no workspaces)
+# Install (three separate installs, no workspaces); the root install also enables the husky hooks
 yarn && (cd server && yarn) && (cd ui && yarn)
 
 # Run locally (two terminals)
