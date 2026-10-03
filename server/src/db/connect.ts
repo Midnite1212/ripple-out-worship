@@ -12,7 +12,7 @@ export const getDb = (): Database => {
   if (database) return database;
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_URL is not set');
-  pool = new Pool({ connectionString });
+  pool = new Pool({ connectionString, max: Number(process.env.DATABASE_POOL_MAX) || 3 });
   pool.on('error', (error) => console.error('Postgres: idle client error', error.message));
   database = drizzle(pool, { schema });
   return database;
