@@ -29,6 +29,7 @@
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "import:songs": "cross-env TS_NODE_TRANSPILE_ONLY=1 ts-node scripts/import-songs.ts",
     "start": "cross-env NODE_ENV=production nodemon app.ts",
     "dev": "cross-env NODE_ENV=test nodemon app.ts",
     "test": "cross-env TS_NODE_TRANSPILE_ONLY=1 node --test --require ts-node/register 'src/**/*.test.ts'",

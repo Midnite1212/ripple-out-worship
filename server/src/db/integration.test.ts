@@ -25,6 +25,7 @@ import { createSong, deleteSong, searchSongs, updateSong } from '../controllers/
 import { FakeRequestInit, callHandler, createRequest, createResponse } from '../testing/http';
 import { TokenUser } from '../utils/verify-jwt';
 import { closeDatabase, getDb } from './connect';
+import { insertSongs, mapSongDocuments } from './importSongs';
 import { songRepository } from './repositories/song.repository';
 
 const TEST_DATABASE_URL = process.env.DATABASE_URL_TEST;
@@ -593,6 +594,48 @@ describe(
           sorted([created._id, owned._id, shared._id, hidden._id])
         );
         assert.equal((await call(getSetlist, {})).status, 401);
+      });
+    });
+
+    describe('song import', () => {
+      const ids = [
+        '64b0000000000000000000c1',
+        '64b0000000000000000000c2',
+        '64b0000000000000000000c3',
+      ];
+      const exported = [
+        {
+          ...song('Imported', { code: 'I1', tempo: ['Fast'] }),
+          _id: { $oid: ids[0] },
+          createdAt: { $date: '2024-01-01T00:00:00Z' },
+          createdBy: { $oid: ADMIN.id },
+          updatedAt: { $date: { $numberLong: '1717200000000' } },
+        },
+        { ...song('No Dates'), _id: { $oid: ids[1] } },
+        { ...song('Removed'), _id: { $oid: ids[2] }, isDeleted: true },
+      ];
+
+      it('imports exported songs readable through the repository, then re-runs as a no-op', async () => {
+        const { rows, skipped } = mapSongDocuments(exported);
+        assert.deepEqual(skipped, []);
+        assert.equal(await insertSongs(rows), 3);
+
+        const imported = await songRepository.findLiveById(ids[0]);
+        assert.equal(imported?.code, 'I1');
+        assert.equal(imported?.createdBy, ADMIN.id);
+        assert.deepEqual(imported?.tempo, ['Fast']);
+        assert.equal(imported?.createdAt.toISOString(), '2024-01-01T00:00:00.000Z');
+        assert.equal(imported?.updatedAt.getTime(), 1717200000000);
+        const undated = await songRepository.findLiveById(ids[1]);
+        assert.equal(undated?.createdAt.getTime(), parseInt(ids[1].slice(0, 8), 16) * 1000);
+        assert.equal(await songRepository.findLiveById(ids[2]), null);
+        assert.deepEqual(
+          (await songRepository.listLive()).map((record) => record._id),
+          ids.slice(0, 2)
+        );
+
+        assert.equal(await insertSongs(rows), 0);
+        assert.equal((await songRepository.listLive()).length, 2);
       });
     });
   }
