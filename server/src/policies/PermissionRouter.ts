@@ -1,4 +1,4 @@
-import { Router, RequestHandler } from 'express';
+import { RequestHandler, Router } from 'express';
 import { createPermissionMiddleware } from './permissionMiddleware';
 
 /**
@@ -6,11 +6,9 @@ import { createPermissionMiddleware } from './permissionMiddleware';
  */
 export class PermissionRouter {
   private router: Router;
-  private basePath: string;
 
-  constructor(basePath: string = '') {
+  constructor() {
     this.router = Router();
-    this.basePath = basePath;
   }
 
   /**
@@ -21,13 +19,8 @@ export class PermissionRouter {
     path: string,
     handlers: RequestHandler[]
   ) {
-    const fullPath = `${this.basePath}${path}`;
-    const permissionMiddlewares = createPermissionMiddleware(method.toUpperCase(), fullPath);
-    
-    // Combine permission middlewares with route handlers
-    const allHandlers = [...permissionMiddlewares, ...handlers];
-    
-    this.router[method](path, ...allHandlers);
+    const permissionMiddlewares = createPermissionMiddleware(method.toUpperCase(), path);
+    this.router[method](path, ...permissionMiddlewares, ...handlers);
   }
 
   get(path: string, ...handlers: RequestHandler[]) {
@@ -66,6 +59,6 @@ export class PermissionRouter {
 /**
  *  Function to create a permission-aware router
  */
-export const createPermissionRouter = (basePath: string = ''): PermissionRouter => {
-  return new PermissionRouter(basePath);
+export const createPermissionRouter = (): PermissionRouter => {
+  return new PermissionRouter();
 };

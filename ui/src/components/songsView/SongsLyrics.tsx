@@ -1,9 +1,9 @@
 import { Box, Chip, Grid, Stack, Typography, useMediaQuery } from '@mui/material';
 import { SongViewSchema } from '../../types/song.types';
-import { flatMusicKeysOptions, sharpMusicKeysOptions, ChordColors } from '../../constants';
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useMemo } from 'react';
 import { specificSongsMobileWidth } from '../../constants';
 import { isChordLyricsBlockEmpty } from '../../helpers/global';
+import { getColor, getTransposeOffset, transposeChord } from '../../helpers/song/chords';
 
 interface SongsLyricsProps {
   chordStatus: boolean;
@@ -16,46 +16,11 @@ interface SongsLyricsProps {
 const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyricsProps) => {
   const isDesktop = useMediaQuery(`(min-width:${specificSongsMobileWidth})`);
   const noSplit = isDesktop ? split : 1;
-  const [finalLyrics, setFinalLyrics] = useState<ReactNode[]>();
-
-  const countParagraph = (inputSong: SongViewSchema | undefined) => {
-    const lyricsLine = inputSong?.chordLyrics.split('\n');
-    let para = 0;
-    lyricsLine &&
-      lyricsLine.map((line) => (line.includes('{') && line.includes('}') ? para++ : null));
-    return para;
-  };
-
-  const searchChordColor = (chord: string): string | undefined => {
-    const chordKey = Object.keys(ChordColors).find(
-      (key) => key.toLowerCase() === chord.toLowerCase()
-    );
-    return chordKey ? ChordColors[chordKey] : undefined;
-  };
-
-  const getColor = (chord: string) => {
-    const chordPattern = /^([A-G][#b]?)(m)?/;
-    const match = chord.match(chordPattern);
-
-    if (!match) return undefined;
-
-    const rootNote = match[1];
-    const isMinor = match[2] === 'm';
-
-    const baseChord = isMinor ? `${rootNote}m` : rootNote;
-
-    return searchChordColor(baseChord);
-  };
 
   const parseLyrics = useCallback(
     (inputSong: SongViewSchema | undefined, songChunk: string[]) => {
       const result: ReactNode[] = [];
-      const originalChordIndex =
-        sharpMusicKeysOptions.indexOf(inputSong?.originalKey ?? 'C') === -1
-          ? flatMusicKeysOptions.indexOf(inputSong?.originalKey ?? 'C')
-          : sharpMusicKeysOptions.indexOf(inputSong?.originalKey ?? 'C');
-      const chordDifference = changeKey - originalChordIndex;
-      const transpossedChordIndex = chordDifference < 0 ? chordDifference + 12 : chordDifference;
+      const transpossedChordIndex = getTransposeOffset(inputSong?.originalKey, changeKey);
       const lyricsLine = songChunk;
 
       // render the lyrics
@@ -71,22 +36,20 @@ const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyri
                 variant="outlined"
                 sx={{
                   height: '30px',
+                  borderRadius: '4px',
+                  mb: '10px',
+                  mt: '3px',
+                  borderColor: '#A9A9A9',
                   '& .MuiChip-label': {
                     width: 'inline-flex',
                     alignItems: 'center',
                     whiteSpace: 'none',
-                    color: '#D0BCFF',
-                    borderColor: '#D0BCFF',
+                    color: 'secondary.main',
+                    borderColor: 'secondary.main',
                     borderRadius: 4,
                     border: '2',
                     fontSize: '14px',
                   },
-                }}
-                style={{
-                  borderRadius: 4,
-                  marginBottom: '10px',
-                  marginTop: '3px',
-                  borderColor: '#A9A9A9',
                 }}
               />
             );
@@ -108,50 +71,7 @@ const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyri
                     const endChord = lyric.indexOf(']');
                     const chord = lyric.slice(startChord + 1, endChord);
 
-                    // Handle slash chords by separating base chord and bass note
-                    const chordParts = chord.split('/');
-                    const baseChord = chordParts[0];
-                    const bassNote = chordParts[1];
-
-                    // Transpose the base chord
-                    let cleanedChord = baseChord.slice(0, 2);
-                    if (cleanedChord.length > 1 && !['#', 'b'].includes(cleanedChord[1])) {
-                      cleanedChord = cleanedChord[0];
-                    }
-                    cleanedChord = cleanedChord[0].toUpperCase() + cleanedChord.slice(1);
-                    const chordIndex =
-                      flatMusicKeysOptions.indexOf(cleanedChord) === -1
-                        ? sharpMusicKeysOptions.indexOf(cleanedChord)
-                        : flatMusicKeysOptions.indexOf(cleanedChord);
-
-                    const transpossedChordBase = useFlat
-                      ? flatMusicKeysOptions[(chordIndex + transpossedChordIndex) % 12]
-                      : sharpMusicKeysOptions[(chordIndex + transpossedChordIndex) % 12];
-
-                    // Reconstruct the base chord with the transposed root
-                    const chordSuffix = baseChord.slice(cleanedChord.length);
-                    const transposedBaseChord = transpossedChordBase + chordSuffix;
-
-                    // Transpose the bass note if it exists
-                    let transpossedChord = transposedBaseChord;
-                    if (bassNote) {
-                      let cleanedBassNote = bassNote.slice(0, 2);
-                      if (cleanedBassNote.length > 1 && !['#', 'b'].includes(cleanedBassNote[1])) {
-                        cleanedBassNote = cleanedBassNote[0];
-                      }
-                      cleanedBassNote = cleanedBassNote[0].toUpperCase() + cleanedBassNote.slice(1);
-
-                      const bassNoteIndex =
-                        flatMusicKeysOptions.indexOf(cleanedBassNote) === -1
-                          ? sharpMusicKeysOptions.indexOf(cleanedBassNote)
-                          : flatMusicKeysOptions.indexOf(cleanedBassNote);
-
-                      const transposedBassNote = useFlat
-                        ? flatMusicKeysOptions[(bassNoteIndex + transpossedChordIndex) % 12]
-                        : sharpMusicKeysOptions[(bassNoteIndex + transpossedChordIndex) % 12];
-
-                      transpossedChord = transposedBaseChord + '/' + transposedBassNote;
-                    }
+                    const transpossedChord = transposeChord(chord, transpossedChordIndex, useFlat);
 
                     const textLyrics = lyric.slice(endChord + 1);
                     const chipColor = getColor(transpossedChord);
@@ -164,26 +84,24 @@ const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyri
                             size="small"
                             sx={{
                               height: 'fit',
+                              borderRadius: '4px',
+                              backgroundColor: chipColor,
+                              mb: '5px',
+                              mt: '3px',
                               '& .MuiChip-label': {
                                 alignItems: 'center',
                                 whiteSpace: 'none',
                                 fontWeight: 'bold',
                                 fontSize: '13px',
-                                color: '#EADDFF',
+                                color: 'primary.lightest',
                               },
-                            }}
-                            style={{
-                              borderRadius: 4,
-                              backgroundColor: chipColor,
-                              marginBottom: '5px',
-                              marginTop: '3px',
                             }}
                           />
                         ) : null}
                         <Typography
-                          style={{
+                          sx={{
                             whiteSpace: 'pre-wrap',
-                            color: '#CCC2DC',
+                            color: 'onSurface.secondary',
                             wordBreak: 'break-word',
                           }}
                         >
@@ -195,7 +113,7 @@ const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyri
                     return (
                       <Box key={i}>
                         {chordStatus ? <Chip sx={{ visibility: 'hidden' }} /> : null}
-                        <Typography style={{ whiteSpace: 'pre-wrap', color: '#CCC2DC' }}>
+                        <Typography sx={{ whiteSpace: 'pre-wrap', color: 'onSurface.secondary' }}>
                           {lyric}
                         </Typography>
                       </Box>
@@ -216,7 +134,7 @@ const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyri
     (song: SongViewSchema | undefined) => {
       const seperator = '{';
       const result = [];
-      const inputSong = song ? song.chordLyrics.split('\n') : [];
+      const inputSong = song?.chordLyrics?.split('\n') ?? [];
       let currentGroup: string[] = [];
 
       for (let i = 0; i < inputSong.length; i++) {
@@ -251,11 +169,7 @@ const SongsLyrics = ({ chordStatus, changeKey, song, split, useFlat }: SongsLyri
     [parseLyrics]
   );
 
-  useEffect(() => {
-    countParagraph(song);
-    const res = groupLyricsToParagraphs(song);
-    setFinalLyrics(res);
-  }, [parseLyrics, song, groupLyricsToParagraphs]);
+  const finalLyrics = useMemo(() => groupLyricsToParagraphs(song), [groupLyricsToParagraphs, song]);
 
   return (
     <>

@@ -5,7 +5,7 @@ const fullNameValidator = z
   .trim()
   .min(1, { message: 'Please enter your full name' })
   .max(100);
-const emailValidator = z.string().email({ message: 'Please enter a valid email' }).trim();
+const emailValidator = z.string().trim().email({ message: 'Please enter a valid email' });
 const passwordValidator = z
   .string()
   .trim()
@@ -13,4 +13,4 @@ const passwordValidator = z
   .max(32, { message: 'Password must be at most 32 characters long' });
 const stringValidator = z.string().trim();
 
-export { fullNameValidator, emailValidator, passwordValidator, stringValidator };
+export { emailValidator, fullNameValidator, passwordValidator, stringValidator };

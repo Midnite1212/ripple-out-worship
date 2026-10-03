@@ -1,9 +1,8 @@
 import { createTheme, PaletteOptions, SimplePaletteColorOptions } from '@mui/material/styles';
 import '@fontsource/work-sans';
 import '@fontsource/dm-sans';
-import '@mui/material/styles';
 import { createBreakpoints } from '@mui/system';
-import { ExpandMoreRounded } from '@mui/icons-material';
+import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded';
 const breakpoints = createBreakpoints({});
 
 const PRIMARY_MAIN = '#4F378B';
@@ -21,6 +20,58 @@ const SECONDARY_DARK = '#EADDFF';
 
 const WARNING_MAIN = '#EFB8C8';
 const ERROR_TEXT = '#8C1D18';
+
+declare module '@mui/material/styles' {
+  interface SurfacePalette {
+    container: string;
+    containerHigh: string;
+    containerHighest: string;
+    containerActive: string;
+  }
+
+  interface OutlinePalette {
+    main: string;
+    variant: string;
+  }
+
+  interface OnSurfacePalette {
+    variant: string;
+    secondary: string;
+    neutral: string;
+  }
+
+  interface OnColorPalette {
+    main: string;
+  }
+
+  interface SwitchTrackPalette {
+    checked: string;
+  }
+
+  interface ScrollbarPalette {
+    thumb: string;
+  }
+
+  interface Palette {
+    surface: SurfacePalette;
+    outline: OutlinePalette;
+    onSurface: OnSurfacePalette;
+    onPrimary: OnColorPalette;
+    onSecondaryContainer: OnColorPalette;
+    switchTrack: SwitchTrackPalette;
+    scrollbar: ScrollbarPalette;
+  }
+
+  interface PaletteOptions {
+    surface?: SurfacePalette;
+    outline?: OutlinePalette;
+    onSurface?: OnSurfacePalette;
+    onPrimary?: OnColorPalette;
+    onSecondaryContainer?: OnColorPalette;
+    switchTrack?: SwitchTrackPalette;
+    scrollbar?: ScrollbarPalette;
+  }
+}
 
 // Module augmentation to include @mui/x-date-pickers components
 declare module '@mui/material/styles' {
@@ -145,6 +196,33 @@ const palette: ExtendedPaletteOptions = {
   text: {
     primary: '#fff',
   },
+  surface: {
+    container: '#211F26',
+    containerHigh: '#2B2930',
+    containerHighest: '#322F35',
+    containerActive: '#332D41',
+  },
+  outline: {
+    main: '#938F99',
+    variant: '#49454F',
+  },
+  onSurface: {
+    variant: '#CAC4D0',
+    secondary: '#CCC2DC',
+    neutral: '#D1D1D1',
+  },
+  onPrimary: {
+    main: '#381E72',
+  },
+  onSecondaryContainer: {
+    main: '#E8DEF8',
+  },
+  switchTrack: {
+    checked: '#8175A0',
+  },
+  scrollbar: {
+    thumb: '#999',
+  },
 };
 
 const customTheme = createTheme({
@@ -255,7 +333,6 @@ const customTheme = createTheme({
           fontWeight: 500,
           color: PRIMARY_LIGHTER,
           background: '#1D1B20',
-          border: '1px solid {theme.palette.primary.main}',
           '& .MuiOutlinedInput-notchedOutline': {
             borderColor: '#938F99',
           },

@@ -1,62 +1,58 @@
-import { Close, Folder, MoreVertRounded, QueueMusic } from '@mui/icons-material';
+import { Fragment, MouseEvent, SyntheticEvent, useCallback, useRef } from 'react';
 import {
   Box,
+  CircularProgress,
+  IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Typography,
-  IconButton,
-  styled,
   Snackbar,
-  CircularProgress,
+  SnackbarCloseReason,
+  Typography,
+  styled,
 } from '@mui/material';
+import Close from '@mui/icons-material/Close';
+import Folder from '@mui/icons-material/Folder';
+import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
+import QueueMusic from '@mui/icons-material/QueueMusic';
+import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
-import { customAxios as axios } from '../custom/customAxios';
-import { useState, useEffect, useCallback, Fragment } from 'react';
-import { Setlist, SetlistFolder } from '../../types/setlist.types';
 import MobileBackButton from '../navigation/MobileBackButton';
-import SetlistFolderDrawer from './SetlistFolderDrawer';
 import SetlistActionsMenu from './SetlistActionsMenu';
+import SetlistFolderDrawer from './SetlistFolderDrawer';
+import useFolderData from './hooks/useFolderData';
+import useFolderDrawer from './hooks/useFolderDrawer';
+import useSetlistMenu, { MenuState } from './hooks/useSetlistMenu';
+import useSnackbar, { SnackbarState } from './hooks/useSnackbar';
+import { Setlist, SetlistFolder } from '../../types/setlist.types';
 
-// Types
-interface SnackbarState {
-  open: boolean;
-  message: string;
-}
-
-interface MenuState {
-  anchorEl: HTMLElement | null;
-  currentSetlistId: string | null;
-}
-
-// Constants
 const SNACKBAR_AUTO_HIDE_DURATION = 5000;
 
 const STYLES = {
   header: {
-    color: '#D0BCFE',
+    color: 'secondary.main',
     '& .MuiListItemText-primary': {
-      color: '#E6E0E9',
+      color: 'primary.lighter',
       fontWeight: 700,
       fontSize: '1.125rem',
     },
     '& .MuiListItemText-secondary': {
-      color: '#CAC4D0',
+      color: 'onSurface.variant',
       fontWeight: 500,
       fontSize: '0.875rem',
     },
   },
   listItemText: {
-    color: '#D0BCFE',
+    color: 'secondary.main',
     '& .MuiListItemText-primary': {
-      color: '#E6E0E9',
+      color: 'primary.lighter',
       fontWeight: 700,
       fontSize: '1rem',
     },
     '& .MuiListItemText-secondary': {
-      color: '#CAC4D0',
+      color: 'onSurface.variant',
       fontWeight: 500,
       fontSize: '0.75rem',
     },
@@ -67,7 +63,6 @@ const STYLES = {
   },
 } as const;
 
-// Styled Components
 const MainContainer = styled(Box)({
   display: 'flex',
   flexDirection: 'column',
@@ -76,14 +71,14 @@ const MainContainer = styled(Box)({
   padding: 0,
 });
 
-const HeaderContainer = styled(Box)({
+const HeaderContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
   width: '100%',
   alignItems: 'flex-start',
-  backgroundColor: '#141218',
+  backgroundColor: theme.palette.primary.darkest,
   padding: '1rem',
-});
+}));
 
 const ListContainer = styled(Box)({
   display: 'flex',
@@ -102,196 +97,12 @@ const LoadingContainer = styled(Box)({
   gap: '1rem',
 });
 
-// Utility Functions
-const formatDate = (dateString: string): string => {
-  if (!dateString) return '';
-  try {
-    return dateString.split('T')[0];
-  } catch {
-    return dateString;
-  }
+const formatDate = (date?: Date | string | null): string => {
+  if (!date) return '';
+  const parsedDate = dayjs(date);
+  return parsedDate.isValid() ? parsedDate.format('YYYY-MM-DD') : '';
 };
 
-// Custom Hooks
-const useSnackbar = () => {
-  const [snackbar, setSnackbar] = useState<SnackbarState>({
-    open: false,
-    message: '',
-  });
-
-  const handleOpen = useCallback((message: string) => {
-    setSnackbar({ open: true, message });
-  }, []);
-
-  const handleClose = useCallback((_: any, reason?: string) => {
-    if (reason === 'clickaway') return;
-    setSnackbar((prev) => ({ ...prev, open: false }));
-  }, []);
-
-  return {
-    snackbar,
-    handleOpen,
-    handleClose,
-  };
-};
-
-const useSetlistMenu = () => {
-  const [menuState, setMenuState] = useState<MenuState>({
-    anchorEl: null,
-    currentSetlistId: null,
-  });
-
-  const handleOpen = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>, setlistId: string) => {
-      event.stopPropagation();
-      setMenuState({
-        anchorEl: event.currentTarget,
-        currentSetlistId: setlistId,
-      });
-    },
-    []
-  );
-
-  const handleClose = useCallback(() => {
-    setMenuState({
-      anchorEl: null,
-      currentSetlistId: null,
-    });
-  }, []);
-
-  return {
-    menuState,
-    handleOpen,
-    handleClose,
-  };
-};
-
-const useFolderDrawer = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [folderId, setFolderId] = useState('');
-  const [folderName, setFolderName] = useState('');
-  const [folderCreated, setFolderCreated] = useState('');
-  const [mode, setMode] = useState<'create' | 'edit'>('edit');
-
-  const toggle = useCallback((newOpen: boolean) => {
-    setIsOpen(newOpen);
-  }, []);
-
-  const reset = useCallback(() => {
-    setFolderId('');
-    setFolderName('');
-    setFolderCreated('');
-  }, []);
-
-  return {
-    isOpen,
-    folderId,
-    folderName,
-    folderCreated,
-    mode,
-    toggle,
-    reset,
-    setFolderId,
-    setFolderName,
-    setFolderCreated,
-    setMode,
-  };
-};
-
-const useFolderData = (id: string | undefined, onError: (message: string) => void) => {
-  const [folder, setFolder] = useState<SetlistFolder | null>(null);
-  const [setlists, setSetlists] = useState<Setlist[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchFolder = useCallback(async () => {
-    if (!id) {
-      setError('No folder ID provided');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data } = await axios.get<SetlistFolder>(`/api/groups/get?id=${id}`);
-
-      if (!data) {
-        throw new Error('Folder not found');
-      }
-
-      setFolder(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch folder details';
-      setError(message);
-      onError(message);
-      console.error('Error fetching folder:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [id, onError]);
-
-  const fetchSetlists = useCallback(async () => {
-    if (!folder?.setlistIds?.length) {
-      setSetlists([]);
-      return;
-    }
-
-    try {
-      const { data, status } = await axios.get<Setlist[]>('/api/setlists/get');
-
-      if (status !== 200 || !data) {
-        throw new Error('Failed to fetch setlists');
-      }
-
-      const filteredSetlists = data.filter(
-        (setlist) => folder.setlistIds?.includes(setlist._id) ?? false
-      );
-
-      setSetlists(filteredSetlists);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch setlists';
-      onError(message);
-      console.error('Error fetching setlists:', err);
-    }
-  }, [folder?.setlistIds, onError]);
-
-  const refreshFolder = useCallback(async () => {
-    if (!folder?._id) return;
-
-    try {
-      const { data } = await axios.get<SetlistFolder>(`/api/groups/get?id=${folder._id}`);
-      setFolder(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to refresh folder';
-      onError(`Error refreshing data: ${message}`);
-    }
-  }, [folder?._id, onError]);
-
-  const removeSetlist = useCallback((setlistId: string) => {
-    setSetlists((prev) => prev.filter((s) => s._id !== setlistId));
-  }, []);
-
-  useEffect(() => {
-    fetchFolder();
-  }, [fetchFolder]);
-
-  useEffect(() => {
-    fetchSetlists();
-  }, [fetchSetlists]);
-
-  return {
-    folder,
-    setlists,
-    loading,
-    error,
-    refreshFolder,
-    removeSetlist,
-  };
-};
-
-// Sub-components
 const LoadingState: React.FC = () => (
   <LoadingContainer>
     <CircularProgress size={40} />
@@ -329,7 +140,7 @@ const FolderHeader: React.FC<{
       </ListItemIcon>
       <ListItemText primary={folder.groupName} sx={STYLES.header} />
       <IconButton onClick={onDrawerOpen}>
-        <MoreVertRounded sx={{ color: '#4A4458', fontSize: '1.75rem' }} />
+        <MoreVertRounded sx={{ color: 'secondary.lighter', fontSize: '1.75rem' }} />
       </IconButton>
     </ListItemButton>
   </HeaderContainer>
@@ -338,7 +149,7 @@ const FolderHeader: React.FC<{
 const SetlistItem: React.FC<{
   setlist: Setlist;
   onNavigate: (id: string) => void;
-  onMenuOpen: (event: React.MouseEvent<HTMLButtonElement>, setlistId: string) => void;
+  onMenuOpen: (event: MouseEvent<HTMLButtonElement>, setlistId: string) => void;
   menuState: MenuState;
   onMenuClose: () => void;
   onSnackbarOpen: (message: string) => void;
@@ -357,7 +168,7 @@ const SetlistItem: React.FC<{
   <Fragment key={setlist._id}>
     <ListItem sx={{ paddingX: '0.75rem' }} disablePadding disableGutters>
       <ListItemButton
-        sx={{ borderBottom: '1px solid #49454F' }}
+        sx={{ borderBottom: (theme) => `1px solid ${theme.palette.outline.variant}` }}
         onClick={() => onNavigate(setlist._id)}
       >
         <ListItemIcon sx={{ minWidth: '40px', mr: '0.5rem' }}>
@@ -365,7 +176,7 @@ const SetlistItem: React.FC<{
         </ListItemIcon>
         <ListItemText
           primary={setlist.name}
-          secondary={formatDate(setlist.date?.toString() || '')}
+          secondary={formatDate(setlist.date)}
           sx={STYLES.listItemText}
         />
         <IconButton
@@ -377,7 +188,7 @@ const SetlistItem: React.FC<{
           aria-haspopup="true"
           aria-label={`Open menu for setlist ${setlist.name}`}
         >
-          <MoreVertRounded sx={{ color: '#4A4458', fontSize: '1.75rem' }} />
+          <MoreVertRounded sx={{ color: 'secondary.lighter', fontSize: '1.75rem' }} />
         </IconButton>
       </ListItemButton>
       <SetlistActionsMenu
@@ -398,7 +209,7 @@ const SetlistSection: React.FC<{
   onNavigate: (id: string) => void;
   menuProps: {
     menuState: MenuState;
-    onMenuOpen: (event: React.MouseEvent<HTMLButtonElement>, setlistId: string) => void;
+    onMenuOpen: (event: MouseEvent<HTMLButtonElement>, setlistId: string) => void;
     onMenuClose: () => void;
   };
   onSnackbarOpen: (message: string) => void;
@@ -407,7 +218,7 @@ const SetlistSection: React.FC<{
 }> = ({ setlists, onNavigate, menuProps, onSnackbarOpen, onSetlistDeleted, onFolderRefresh }) => (
   <ListContainer>
     <Box width="100%" sx={{ p: '1rem' }}>
-      <Typography color="#D1D1D1" fontSize="0.75rem" fontWeight={700}>
+      <Typography color="onSurface.neutral" fontSize="0.75rem" fontWeight={700}>
         Setlists ({setlists.length})
       </Typography>
     </Box>
@@ -435,7 +246,7 @@ const SetlistSection: React.FC<{
 
 const CustomSnackbar: React.FC<{
   snackbar: SnackbarState;
-  onClose: (event: any, reason?: string) => void;
+  onClose: (event?: SyntheticEvent | Event, reason?: SnackbarCloseReason) => void;
 }> = ({ snackbar, onClose }) => (
   <Snackbar
     open={snackbar.open}
@@ -450,12 +261,10 @@ const CustomSnackbar: React.FC<{
   />
 );
 
-// Main Component
 const SetlistFolderDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
-  // Custom hooks
   const {
     snackbar,
     handleOpen: handleSnackbarOpen,
@@ -463,13 +272,13 @@ const SetlistFolderDetail: React.FC = () => {
   } = useSnackbar();
   const { menuState, handleOpen: handleMenuOpen, handleClose: handleMenuClose } = useSetlistMenu();
   const drawer = useFolderDrawer();
+  const isFolderDeletedRef = useRef(false);
 
   const { folder, setlists, loading, error, refreshFolder, removeSetlist } = useFolderData(
     id,
     handleSnackbarOpen
   );
 
-  // Event handlers
   const handleNavigateToSetlist = useCallback(
     (setlistId: string) => {
       navigate(`/setlist/details/${setlistId}`);
@@ -486,7 +295,20 @@ const SetlistFolderDetail: React.FC = () => {
     drawer.toggle(true);
   }, [folder, drawer]);
 
-  // Early returns
+  const { toggle: toggleDrawer } = drawer;
+  const handleDrawerToggle = useCallback(
+    (newOpen: boolean) => {
+      toggleDrawer(newOpen);
+      if (!newOpen && !isFolderDeletedRef.current) refreshFolder();
+    },
+    [refreshFolder, toggleDrawer]
+  );
+
+  const handleFolderDeleted = useCallback(() => {
+    isFolderDeletedRef.current = true;
+    navigate('/setlist', { state: { snackbarMessage: 'Folder deleted.' } });
+  }, [navigate]);
+
   if (!id) {
     return <ErrorState message="No folder ID provided" />;
   }
@@ -507,7 +329,6 @@ const SetlistFolderDetail: React.FC = () => {
     );
   }
 
-  // Main render
   return (
     <MainContainer>
       <FolderHeader folder={folder} onDrawerOpen={handleDrawerOpen} />
@@ -527,14 +348,15 @@ const SetlistFolderDetail: React.FC = () => {
 
       <SetlistFolderDrawer
         openDrawer={drawer.isOpen}
-        toggleFolderDrawer={drawer.toggle}
+        toggleFolderDrawer={handleDrawerToggle}
         setFolderId={drawer.setFolderId}
         setFolderName={drawer.setFolderName}
         setFolderCreated={drawer.setFolderCreated}
         folderId={drawer.folderId}
         folderName={drawer.folderName}
         folderCreated={drawer.folderCreated}
-        mode={drawer.mode}
+        mode="edit"
+        onFolderDeleted={handleFolderDeleted}
       />
 
       <CustomSnackbar snackbar={snackbar} onClose={handleSnackbarClose} />

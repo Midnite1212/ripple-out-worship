@@ -6,11 +6,11 @@ import {
 } from '../controllers/setlist.controllers';
 import { createPermissionRouter } from '../policies';
 
-const router = createPermissionRouter('/setlists');
+const router = createPermissionRouter();
 
-router.post('/create', createSetlist);
-router.get('/get', getSetlist);
-router.put('/update', updateSetlist);
-router.put('/delete', deleteSetlist);
+router.post('/api/setlists/create', createSetlist);
+router.get('/api/setlists/get', getSetlist);
+router.put('/api/setlists/update', updateSetlist);
+router.put('/api/setlists/delete', deleteSetlist);
 
 export default router.getRouter();

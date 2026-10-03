@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Divider,
@@ -35,7 +35,10 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // State management
-  const [sortedSongList, setSortedSongList] = useState<SongSetlistSchema[]>([]);
+  const sortedSongList = useMemo(
+    () => [...songList].sort((a, b) => (a.sequence || 0) - (b.sequence || 0)),
+    [songList]
+  );
   const [menuState, setMenuState] = useState({
     anchorEl: null as HTMLElement | null,
     currentSongId: null as string | null,
@@ -52,12 +55,6 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
       song: null as SongSetlistSchema | null,
     },
   });
-
-  // Sort songs whenever the songList changes
-  useEffect(() => {
-    const sorted = [...songList].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-    setSortedSongList(sorted);
-  }, [songList]);
 
   // Menu handlers
   const handleMenuOpen = (event: React.MouseEvent<HTMLButtonElement>, songId: string) => {
@@ -119,12 +116,7 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
       newSortedList[currentIndex],
     ];
 
-    newSortedList.forEach((song, index) => {
-      song.sequence = index + 1;
-    });
-
-    setSortedSongList(newSortedList);
-    setSongList(newSortedList);
+    setSongList(newSortedList.map((song, index) => ({ ...song, sequence: index + 1 })));
     handleMenuClose();
   };
 
@@ -138,7 +130,10 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
       .filter((song) => song._id !== songId)
       .map((song) => ({
         ...song,
-        sequence: song.sequence! > songToRemove.sequence! ? song.sequence! - 1 : song.sequence,
+        sequence:
+          (song.sequence ?? 0) > (songToRemove.sequence ?? 0)
+            ? (song.sequence ?? 0) - 1
+            : song.sequence,
       }));
 
     setSongList(updatedList);
@@ -148,23 +143,23 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
   // Styles
   const tableCellStyles = {
     header: {
-      color: '#938F99',
+      color: 'outline.main',
       padding: isMobile ? '0.5rem' : '0.75rem',
     },
     sequence: {
       width: '5%',
-      color: '#938F99',
+      color: 'outline.main',
       padding: isMobile ? '0.5rem' : '0.75rem',
     },
     title: {
       width: readOnly ? '85%' : '80%',
-      color: '#938F99',
+      color: 'outline.main',
       py: isMobile ? '0.75rem' : '1rem',
       px: isMobile ? '0.75rem' : '1rem',
     },
     key: {
       width: '10%',
-      color: '#938F99',
+      color: 'outline.main',
       padding: isMobile ? '0.5rem' : '0.75rem',
       textAlign: 'center',
     },
@@ -175,7 +170,7 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
   };
 
   const keyBoxStyles = {
-    background: '#4F378B',
+    background: theme.palette.primary.main,
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
@@ -189,7 +184,7 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
       <TableContainer
         sx={{
           borderRadius: '1rem',
-          backgroundColor: '#0F0D13',
+          backgroundColor: 'background.paper',
           pt: '0.25rem',
           pb: '0.5rem',
           px: '1rem',
@@ -212,20 +207,20 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
                   <TableCell sx={tableCellStyles.title}>
                     <Typography
                       fontWeight={700}
-                      sx={{ color: '#E6E0E9', fontSize: '1rem !important' }}
+                      sx={{ color: 'primary.lighter', fontSize: '1rem !important' }}
                     >
                       {song.title}
                     </Typography>
                     <Typography
                       fontWeight={500}
-                      sx={{ color: '#CAC4D0', fontSize: '0.75rem !important' }}
+                      sx={{ color: 'onSurface.variant', fontSize: '0.75rem !important' }}
                     >
                       {song.artist}
                     </Typography>
                   </TableCell>
                   <TableCell sx={tableCellStyles.key}>
                     <Box sx={keyBoxStyles}>
-                      <Typography color="#EADDFF" fontSize="1rem" fontWeight={400}>
+                      <Typography color="primary.lightest" fontSize="1rem" fontWeight={400}>
                         {song.key || song.originalKey}
                       </Typography>
                     </Box>
@@ -265,13 +260,13 @@ const SetlistSongsTable: React.FC<SetlistSongsTableProps> = ({
                           text="Move Down"
                           onClick={() => handleMoveSong('down', song._id)}
                         />
-                        <Divider sx={{ bgcolor: '#49454F' }} />
+                        <Divider sx={{ bgcolor: 'outline.variant' }} />
                         <SetlistMenuActionItem
                           icon={Delete}
                           text="Remove Song"
                           onClick={() => handleRemoveSong(song._id)}
-                          iconColor="#EFB8C8"
-                          color="#EFB8C8"
+                          iconColor="error.main"
+                          color="error.main"
                           hoverBgColor="rgba(239, 184, 200, 0.2)"
                         />
                       </Menu>

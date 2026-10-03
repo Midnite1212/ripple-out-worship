@@ -1,10 +1,13 @@
 import { ReactElement, useEffect, useState } from 'react';
 import { Box, Container, Skeleton, Typography, useMediaQuery, useTheme } from '@mui/material';
+import { useParams } from 'react-router-dom';
 import { customAxios as axios } from '../custom/customAxios';
 import { Setlist } from '../../types/setlist.types';
+import { applySongKeys } from '../../helpers/setlist/applySongKeys';
 import SetlistViewSongs from './SetlistViewSongs';
 import { SetlistViewHeader, SetlistViewFooter } from './SetlistViewPaper';
 import SetlistViewHeaderMenu from './SetlistViewHeaderMenu';
+import { logRequestError } from '../../helpers/global';
 
 interface SetlistViewContainerProps {
   isSetlistPreview?: boolean;
@@ -16,46 +19,36 @@ const SetlistViewContainer = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')) || isSetlistPreview;
 
+  const { id: setlistId = '' } = useParams();
   const [setlist, setSetlist] = useState<Setlist>();
   const [loading, setLoading] = useState(true);
-
-  // Extract setlist ID from URL
-  const getSetlistId = (): string => {
-    const pathname = window.location.pathname;
-    const pattern = isSetlistPreview
-      ? /^\/setlist\/([^/]+)(?:\/|$)/
-      : /^\/setlist\/view\/([^/]+)(?:\/|$)/;
-
-    const match = pathname.match(pattern);
-
-    if (!match) {
-      console.warn(`No setlistId found in pathname: ${pathname}`);
-      return '';
-    }
-
-    return match[1];
-  };
-
-  const setlistId = getSetlistId();
 
   // Fetch setlist data
   useEffect(() => {
     if (!setlistId) return;
+
+    let ignore = false;
+    setLoading(true);
+    setSetlist(undefined);
 
     const fetchSetlist = async () => {
       try {
         const { data } = await axios.get<Setlist>('/api/setlists/get', {
           params: { id: setlistId },
         });
-        setSetlist(data);
+        if (ignore) return;
+        setSetlist(applySongKeys(data));
       } catch (error) {
-        console.error('Error fetching setlist:', error);
+        logRequestError('Error fetching setlist:', error);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
 
     fetchSetlist();
+    return () => {
+      ignore = true;
+    };
   }, [setlistId]);
 
   // Early returns for edge cases
@@ -136,7 +129,7 @@ const SetlistViewContainer = ({
 
       {/* Main Content */}
       <Container maxWidth="xl" sx={mainContainerStyles}>
-        <SetlistViewSongs songs={setlist.songs || []} userHeader={true} userView={true} />
+        <SetlistViewSongs songs={setlist.songs || []} />
       </Container>
 
       {/* Footer - only show in full view */}

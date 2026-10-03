@@ -1,9 +1,12 @@
-import { useTheme } from '@mui/material/styles';
-import { Add, Folder, QueueMusic } from '@mui/icons-material';
+import { Theme, useTheme } from '@mui/material/styles';
+import Add from '@mui/icons-material/Add';
+import Folder from '@mui/icons-material/Folder';
+import QueueMusic from '@mui/icons-material/QueueMusic';
 import { Box, Collapse, Fab, Slide, useMediaQuery } from '@mui/material';
 import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SetlistFolderDrawer from './SetlistFolderDrawer';
+import useFolderDrawer from './hooks/useFolderDrawer';
 import { MOBILE_NAVBAR_HEIGHT } from '../../constants';
 
 // Types
@@ -41,31 +44,31 @@ const STYLES = {
     },
   },
   primaryFab: {
-    backgroundColor: '#D0BCFF',
-    color: '#381E72',
+    backgroundColor: 'secondary.main',
+    color: 'onPrimary.main',
     '&:hover': {
-      backgroundColor: '#D0BCFF',
+      backgroundColor: 'secondary.main',
       opacity: 0.95,
     },
   },
   secondaryFab: {
-    backgroundColor: '#171717',
+    backgroundColor: 'background.default',
     color: 'secondary.main',
-    border: '1px solid #938F99',
+    border: (theme: Theme) => `1px solid ${theme.palette.outline.main}`,
     '&:hover': {
       borderColor: 'secondary.main',
       backgroundColor: 'rgba(208, 188, 255, 0.15)',
     },
   },
   desktopSecondaryFab: {
-    backgroundColor: '#171717',
+    backgroundColor: 'background.default',
     color: 'secondary.main',
-    border: '1px solid #938F99',
+    border: (theme: Theme) => `1px solid ${theme.palette.outline.main}`,
     padding: '12px 24px',
     fontSize: '1rem',
     '&:hover': {
       borderColor: 'secondary.main',
-      backgroundColor: '#171717',
+      backgroundColor: 'background.default',
     },
   },
   icon: {
@@ -128,35 +131,6 @@ const useOutsideClick = (
     // Return undefined for the case when isOpen is false
     return undefined;
   }, [isOpen, anchorEl, onClose, ref]);
-};
-
-const useFolderDrawer = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [folderId, setFolderId] = useState('');
-  const [folderName, setFolderName] = useState('');
-  const [folderCreated, setFolderCreated] = useState('');
-
-  const toggle = useCallback((newOpen: boolean) => {
-    setIsOpen(newOpen);
-  }, []);
-
-  const reset = useCallback(() => {
-    setFolderId('');
-    setFolderName('');
-    setFolderCreated('');
-  }, []);
-
-  return {
-    isOpen,
-    folderId,
-    folderName,
-    folderCreated,
-    toggle,
-    reset,
-    setFolderId,
-    setFolderName,
-    setFolderCreated,
-  };
 };
 
 // Utility Functions

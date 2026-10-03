@@ -1,89 +1,131 @@
 import {
-  Box,
   Button,
+  CircularProgress,
   Container,
+  Grid,
+  IconButton,
+  Snackbar,
   Stack,
   Typography,
-  Modal,
   useMediaQuery,
-  ButtonGroup,
-  Grid,
   useTheme,
 } from '@mui/material';
-import { FC, ReactElement, useEffect, useState, useCallback, useRef } from 'react';
+import { FC, ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { SongSchema, SongSearchFilter } from '../../types/song.types';
 import SongCard from './SongCard';
 import SongSearch from './SongSearch';
-import SongSearchMobile from './SongSearchMobile';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Add, MusicNote } from '@mui/icons-material';
+import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import PageHeader from '../navigation/PageHeader';
 import { getFirstLineLyrics } from '../../helpers/song';
 import { customAxios as axios } from '../custom/customAxios';
-import { useOwnership, useSongs } from '../../helpers/customHooks';
-import CircularProgress from '@mui/material/CircularProgress';
+import { useOwnership } from '../../helpers/customHooks';
 import {
   DESKTOP_PAGE_HEADER_HEIGHT,
   MOBILE_NAVBAR_HEIGHT,
   MOBILE_PAGE_HEADER_HEIGHT,
   TABLET_PAGE_HEADER_HEIGHT,
+  specificSongsMobileWidth,
 } from '../../constants';
+import { logRequestError } from '../../helpers/global';
+
+type SongQuery = {
+  search: string;
+  themes: string[];
+  tempo: string[];
+};
+
+type SongSearchResponse = {
+  data?: SongSchema[];
+  totalPages?: number;
+};
+
+const newSongButtonSx = {
+  border: 0,
+  borderRadius: '40px',
+  backgroundColor: 'secondary.main',
+  color: 'onPrimary.main',
+  textTransform: 'none',
+  '&:hover': {
+    backgroundColor: 'secondary.main',
+    opacity: '0.95',
+  },
+  transition: 'all 0.1s ease-in-out',
+} as const;
+
+const getSongQueryKey = (filterData: SongSearchFilter | undefined) =>
+  filterData
+    ? JSON.stringify({
+        search: filterData.search?.trim() ?? '',
+        themes: filterData.themes ?? [],
+        tempo: filterData.tempo ?? [],
+      })
+    : '';
 
 const SongListContainer: FC = (): ReactElement => {
   const ownership = useOwnership();
-  const isAdmin = ownership.accessType === 'admin';
+  const isAdmin = ownership?.accessType === 'admin';
   const theme = useTheme();
   const [songResults, setSongResults] = useState<SongSchema[]>([]);
   const [filterData, setFilterData] = useState<SongSearchFilter>();
-  const [open, setOpen] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const queryIdRef = useRef(0);
+  const isFetchingRef = useRef(false);
 
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'lg'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const navigate = useNavigate();
   const location = useLocation();
-  const handleClose = () => setOpen(false);
-  const allSongs = useSongs() as SongSchema[];
 
   const [loading, setLoading] = useState(true);
 
-  const getSongResults = useCallback(async () => {
-    if (filterData) {
+  const queryKey = getSongQueryKey(filterData);
+
+  const fetchSongResults = useCallback(
+    async (query: SongQuery, pageToFetch: number, queryId: number) => {
+      isFetchingRef.current = true;
       try {
-        const payload = await axios.get('/api/songs/search', {
+        const { data } = await axios.get<SongSearchResponse>('/api/songs/search', {
           params: {
-            code: filterData.search,
-            keyword: filterData.search,
-            themes: filterData.themes,
-            tempo: filterData.tempo,
-            page: page,
+            code: query.search,
+            keyword: query.search,
+            themes: query.themes,
+            tempo: query.tempo,
+            page: pageToFetch,
             limit: 20,
           },
         });
-        setSongResults((songResults) => [...songResults, ...payload.data.data]);
-        setTotalPages(payload.data.totalPages);
-        setLoading(false);
-      } catch (error: any) {
-        if (error?.response) {
+        if (queryId !== queryIdRef.current) return;
+        const songs = Array.isArray(data?.data) ? data.data : [];
+        setSongResults((prevSongs) => (pageToFetch === 1 ? songs : [...prevSongs, ...songs]));
+        setTotalPages(data?.totalPages ?? 1);
+        setErrorMessage('');
+      } catch (err: unknown) {
+        if (queryId !== queryIdRef.current) return;
+        if (isAxiosError(err) && err.response?.status === 404) {
+          setSongResults([]);
+          return;
+        }
+        logRequestError('Error searching songs:', err);
+        setErrorMessage('Could not load songs. Please try again.');
+      } finally {
+        if (queryId === queryIdRef.current) {
+          isFetchingRef.current = false;
           setLoading(false);
-          if (error.response.status === 404) {
-            console.log('No songs found');
-            setSongResults([]);
-          } else if (error.response.status === 500 || error.response.status === 401) {
-            // Handle 500 or 401 errors as needed
-          }
-        } else {
-          console.log('An unexpected error occurred:', error);
         }
       }
-    } else {
-      setSongResults(allSongs);
-    }
-  }, [filterData, page, allSongs]);
+    },
+    []
+  );
 
   const handleScroll = useCallback(() => {
     const searchDisplayBox = document.getElementById('search-display');
@@ -93,14 +135,18 @@ const SongListContainer: FC = (): ReactElement => {
       if (isAtBottom && timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      if (!loading && isAtBottom && page < totalPages) {
+      if (!loading && !isFetchingRef.current && isAtBottom && page < totalPages && queryKey) {
+        const nextPage = page + 1;
+        const queryId = queryIdRef.current;
+        const query: SongQuery = JSON.parse(queryKey);
         timeoutRef.current = setTimeout(() => {
-          setPage((prevPage) => prevPage + 1);
+          setPage(nextPage);
+          fetchSongResults(query, nextPage, queryId);
         }, 300);
         searchDisplayBox.scrollTop = scrollTop - 30;
       }
     }
-  }, [loading, page, totalPages]);
+  }, [loading, page, totalPages, queryKey, fetchSongResults]);
 
   useEffect(() => {
     const searchDisplayBox = document.getElementById('search-display');
@@ -112,29 +158,26 @@ const SongListContainer: FC = (): ReactElement => {
         searchDisplayBox.removeEventListener('scroll', handleScroll);
       }
     };
-  }, [loading, page, totalPages, handleScroll]);
+  }, [handleScroll]);
 
-  // useffect for filter
   useEffect(() => {
-    const shouldQuery =
-      filterData &&
-      (filterData.search?.trim() ||
-        (filterData.themes && filterData.themes.length > 0) ||
-        filterData.tempo);
-    if (shouldQuery) {
-      const timer = setTimeout(() => {
-        setSongResults([]);
-        setPage(1);
-        setLoading(true);
-        getSongResults();
-      }, 1000);
+    if (!queryKey) return;
+    const query: SongQuery = JSON.parse(queryKey);
+    const queryId = ++queryIdRef.current;
+    isFetchingRef.current = true;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    const timer = setTimeout(() => {
+      setSongResults([]);
+      setPage(1);
+      setTotalPages(1);
+      setLoading(true);
+      fetchSongResults(query, 1, queryId);
+    }, 1000);
 
-      return () => {
-        clearTimeout(timer);
-      };
-    }
-    return;
-  }, [filterData]);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [queryKey, fetchSongResults]);
 
   useEffect(() => {
     if (location.search) {
@@ -143,17 +186,13 @@ const SongListContainer: FC = (): ReactElement => {
     }
   }, [location.search]);
 
-  // useEffect for scrolling
   useEffect(() => {
-    if (page > 1 && page <= totalPages) getSongResults();
-  }, [page, totalPages, getSongResults]);
-
-  const modalSearchStyle = {
-    width: '100vw',
-    height: '100vh',
-    bgcolor: 'background.paper',
-    p: '32px 16px',
-  };
+    const message = location.state?.snackbarMessage;
+    if (typeof message === 'string') {
+      setSnackbarMessage(message);
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }
+  }, [location, navigate]);
 
   return (
     <>
@@ -173,6 +212,7 @@ const SongListContainer: FC = (): ReactElement => {
           <Button
             variant="outlined"
             sx={{
+              ...newSongButtonSx,
               zIndex: 9,
               display: {
                 xs: 'flex',
@@ -181,23 +221,14 @@ const SongListContainer: FC = (): ReactElement => {
               position: 'fixed',
               bottom: '90px',
               right: '40px',
-              border: 0,
               padding: '5px 10px',
-              borderRadius: '40px',
-              backgroundColor: '#D0BCFF',
-              color: '#381E72',
-              textTransform: 'none',
-              '&:hover': {
-                backgroundColor: '#D0BCFF',
-                opacity: '0.95',
-              },
-              transition: 'all 0.1s ease-in-out',
             }}
-            startIcon={<Add />}
+            startIcon={<AddIcon />}
             onClick={() => navigate('/song/add')}
           >
             <Typography
               variant="subtitle1"
+              component="span"
               fontWeight={700}
               sx={{
                 fontSize: '1rem',
@@ -210,33 +241,25 @@ const SongListContainer: FC = (): ReactElement => {
 
         <PageHeader
           title="Songs"
-          icon={<MusicNote />}
+          icon={<MusicNoteIcon />}
           actionButtons={
             isAdmin && (
               <Button
                 variant="outlined"
                 sx={{
+                  ...newSongButtonSx,
                   display: { xs: 'none', sm: 'flex' },
-                  border: 0,
                   padding: {
                     xs: '8px 15px',
                     sm: '10px 25px',
                   },
-                  borderRadius: '40px',
-                  backgroundColor: '#D0BCFF',
-                  color: '#381E72',
-                  textTransform: 'none',
-                  '&:hover': {
-                    backgroundColor: '#D0BCFF',
-                    opacity: '0.95',
-                  },
-                  transition: 'all 0.1s ease-in-out',
                 }}
-                startIcon={<Add />}
+                startIcon={<AddIcon />}
                 onClick={() => navigate('/song/add')}
               >
                 <Typography
                   variant="subtitle1"
+                  component="span"
                   fontWeight={700}
                   sx={{
                     fontSize: {
@@ -269,31 +292,15 @@ const SongListContainer: FC = (): ReactElement => {
             height={!isMobile ? '100%' : 'auto'}
             p={0}
           >
-            {!isMobile ? (
-              <SongSearch
-                filterData={filterData}
-                setFilterData={setFilterData}
-                onClose={handleClose}
-                songs={allSongs}
-                isDesktop={!isMobile}
-              />
-            ) : (
-              <SongSearchMobile
-                filterData={filterData}
-                setFilterData={setFilterData}
-                onClose={handleClose}
-                songs={allSongs}
-                isDesktop={!isMobile}
-              />
-            )}
+            <SongSearch isMobile={isMobile} setFilterData={setFilterData} />
           </Grid>
 
           {/* Song cards search results */}
-          <Grid item xs={isDesktop ? 8 : isTablet ? 7 : 12} height={!isMobile ? '100%' : '100%'}>
+          <Grid item xs={isDesktop ? 8 : isTablet ? 7 : 12} height="100%">
             <Container
               sx={{
                 p: '1rem',
-                background: '#000',
+                background: (theme) => theme.palette.common.black,
                 borderRadius: '16px',
                 width: '100%',
                 height: '100%',
@@ -305,15 +312,18 @@ const SongListContainer: FC = (): ReactElement => {
                 direction="row"
                 alignItems="center"
                 justifyContent="space-between"
-                spacing="space-between"
                 maxWidth="100%"
                 height={!isMobile ? '4%' : 'auto'}
                 pb={!isMobile ? 0 : '1em'}
               >
-                <Typography variant="h3" color="#FFFFFF">
+                <Typography variant="h3" color="common.white">
                   Search Results
                 </Typography>
-                <ButtonGroup variant="outlined">{/* Button group code */}</ButtonGroup>
+                {errorMessage ? (
+                  <Typography variant="body2" color="error">
+                    {errorMessage}
+                  </Typography>
+                ) : null}
               </Stack>
               <Stack
                 direction="column"
@@ -326,7 +336,7 @@ const SongListContainer: FC = (): ReactElement => {
                   '&::-webkit-scrollbar': {
                     display: 'none',
                   },
-                  '@media (min-width: 600px)': {
+                  [`@media (min-width: ${specificSongsMobileWidth})`]: {
                     '&::-webkit-scrollbar': {
                       display: 'block',
                     },
@@ -334,20 +344,20 @@ const SongListContainer: FC = (): ReactElement => {
                 }}
               >
                 {loading ? (
-                  <Stack height="80%" justifyContent="center" alignItems="center" width={'400'}>
+                  <Stack height="80%" justifyContent="center" alignItems="center" width="100%">
                     <CircularProgress />
                   </Stack>
                 ) : songResults.length > 0 ? (
-                  songResults.map((song, i) => (
+                  songResults.map((song) => (
                     <SongCard
-                      key={i}
+                      key={song._id}
                       {...song}
                       filterData={filterData}
                       isDesktop={!isMobile}
                       firstLine={getFirstLineLyrics(song.chordLyrics)}
                     />
                   ))
-                ) : (
+                ) : errorMessage ? null : (
                   <Stack height="80%" display="flex" justifyContent="center" alignItems="center">
                     <Typography variant="h2" color="primary.main">
                       Couldn't find "{filterData?.search}"
@@ -360,23 +370,24 @@ const SongListContainer: FC = (): ReactElement => {
           </Grid>
         </Grid>
       </Container>
-
-      <Modal
-        open={open}
-        onClose={handleClose}
-        aria-labelledby="modal-modal-title"
-        aria-describedby="modal-modal-description"
-      >
-        <Box sx={modalSearchStyle}>
-          <SongSearch
-            filterData={filterData}
-            setFilterData={setFilterData}
-            onClose={handleClose}
-            songs={allSongs}
-            isDesktop={false}
-          />
-        </Box>
-      </Modal>
+      <Snackbar
+        open={snackbarMessage !== ''}
+        autoHideDuration={5000}
+        onClose={(_, reason) => {
+          if (reason !== 'clickaway') setSnackbarMessage('');
+        }}
+        message={snackbarMessage}
+        action={
+          <IconButton
+            size="small"
+            color="inherit"
+            onClick={() => setSnackbarMessage('')}
+            aria-label="close"
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        }
+      />
     </>
   );
 };

@@ -16,7 +16,7 @@ import { SetlistViewSongsControlChip } from './SetlistViewPaper';
 
 interface SetlistViewSongHeaderProps {
   songs: SongViewSchema[];
-  selectedSong: SongViewSchema;
+  selectedSong: SongViewSchema | undefined;
   setSelectedSong: (song: SongViewSchema) => void;
   split: number;
   onSplitChange: (split: number) => void;
@@ -65,14 +65,14 @@ const SetlistViewSongsHeader = ({
   const selectStyles = {
     width: '100%',
     maxWidth: '500px',
-    backgroundColor: '#211F26',
+    backgroundColor: 'surface.container',
     '&:hover': {
-      backgroundColor: '#332D41',
+      backgroundColor: 'surface.containerActive',
     },
     '&.Mui-selected': {
-      backgroundColor: '#332D41',
+      backgroundColor: 'surface.containerActive',
       '&:hover': {
-        backgroundColor: '#332D41',
+        backgroundColor: 'surface.containerActive',
       },
     },
     fontWeight: 700,
@@ -86,8 +86,8 @@ const SetlistViewSongsHeader = ({
     justifyContent: 'center',
     px: 3,
     py: 1,
-    backgroundColor: '#D0BCFF',
-    color: '#4F378B',
+    backgroundColor: 'secondary.main',
+    color: 'primary.main',
     borderRadius: 2,
     boxShadow: 3,
     fontWeight: 500,
@@ -184,12 +184,14 @@ const SetlistViewSongsHeader = ({
         ContentProps={{ sx: { background: 'transparent', boxShadow: 'none' } }}
       >
         <Box sx={snackbarContentStyles}>
-          <ScreenRotation sx={{ color: '#4F378B', fontSize: 22, mr: 1 }} />
-          <Box sx={{ px: 0.5 }}>Rotate phone to landscape to split (Tip: Better on tablets/ laptops)</Box>
+          <ScreenRotation sx={{ color: 'primary.main', fontSize: 22, mr: 1 }} />
+          <Box sx={{ px: 0.5 }}>
+            Rotate phone to landscape to split (Tip: Better on tablets/ laptops)
+          </Box>
           <IconButton
             size="small"
             onClick={closeSplitSnackbar}
-            sx={{ color: '#4F378B', ml: 2 }}
+            sx={{ color: 'primary.main', ml: 2 }}
             aria-label="close"
           >
             <Close fontSize="small" />

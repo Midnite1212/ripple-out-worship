@@ -1,5 +1,6 @@
 export const formatDate = (date: Date | string): string => {
   const dateObj = new Date(date);
+  if (Number.isNaN(dateObj.getTime())) return '';
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   const day = String(dateObj.getDate()).padStart(2, '0');
   const year = dateObj.getFullYear();
@@ -7,7 +8,9 @@ export const formatDate = (date: Date | string): string => {
   return `${day}-${month}-${year}`;
 };
 
-export const findFirstLetterLyrics = (text: string) => {
+export const findFirstLetterLyrics = (text: string | null | undefined) => {
+  if (!text) return null;
+
   let braceDepth = 0;
   let bracketDepth = 0;
 
@@ -17,13 +20,13 @@ export const findFirstLetterLyrics = (text: string) => {
     if (char === '{') {
       braceDepth++;
     } else if (char === '}') {
-      braceDepth--;
+      braceDepth = Math.max(0, braceDepth - 1);
     } else if (char === '[') {
       bracketDepth++;
     } else if (char === ']') {
-      bracketDepth--;
+      bracketDepth = Math.max(0, bracketDepth - 1);
     } else if (/[a-zA-Z]/.test(char) && braceDepth === 0 && bracketDepth === 0) {
-      return char;
+      return char.toUpperCase();
     }
   }
 
@@ -36,25 +39,4 @@ export const findFirstLetterLyrics = (text: string) => {
  * @param text - a block of the chord lyrics like verse 1, bridge, etc.
  * @return true if the block only contains chords like intros, false otherwise.
  */
-export const isChordLyricsBlockEmpty = (text: string) => {
-  let braceDepth = 0;
-  let bracketDepth = 0;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-
-    if (char === '{') {
-      braceDepth++;
-    } else if (char === '}') {
-      braceDepth--;
-    } else if (char === '[') {
-      bracketDepth++;
-    } else if (char === ']') {
-      bracketDepth--;
-    } else if (/[a-zA-Z]/.test(char) && braceDepth === 0 && bracketDepth === 0) {
-      // Found a letter outside of braces/brackets, so it contains lyrics
-      return false;
-    }
-  }
-  return true;
-};
+export const isChordLyricsBlockEmpty = (text: string) => findFirstLetterLyrics(text) === null;

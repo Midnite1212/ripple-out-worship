@@ -1,10 +1,16 @@
 export type AccessType = 'ministry' | 't3ch' | 'tc' | 'admin';
 
-export interface PermissionConfig {
-  requiresAuth: boolean;
-  allowedAccessTypes?: AccessType[];
-  description?: string;
-}
+export type PermissionConfig =
+  | {
+      requiresAuth: true;
+      allowedAccessTypes?: AccessType[];
+      description?: string;
+    }
+  | {
+      requiresAuth: false;
+      optionalAuth?: boolean;
+      description?: string;
+    };
 
 // Centralized permissions configuration
 /**
@@ -20,113 +26,90 @@ const ALL_ACCESS_TYPES: AccessType[] = ['ministry', 't3ch', 'tc', 'admin'];
 // TODO: Confirm on which access types can do what
 export const ROUTE_PERMISSIONS: Record<string, PermissionConfig> = {
   // Ownership routes
-  'POST /ownerships/create': {
+  'POST /api/ownerships/create': {
     requiresAuth: true,
     description: 'Create ownership record',
   },
-  'GET /ownerships/get': {
+  'GET /api/ownerships/get': {
     requiresAuth: true,
     description: 'View ownership records',
   },
-  'PUT /ownerships/update': {
+  'PUT /api/ownerships/update': {
     requiresAuth: true,
     description: 'Update ownership record',
   },
-  'PUT /ownerships/delete': {
+  'PUT /api/ownerships/delete': {
     requiresAuth: true,
     description: 'Delete ownership record',
   },
 
   // Group routes
-  'POST /groups/create': {
+  'POST /api/groups/create': {
     requiresAuth: true,
     description: 'Create new group',
   },
-  'GET /groups/get': {
+  'GET /api/groups/get': {
     requiresAuth: true,
     description: 'View groups',
   },
-  'PUT /groups/update': {
+  'PUT /api/groups/update': {
     requiresAuth: true,
     description: 'Update group',
   },
-  'PUT /groups/delete': {
+  'PUT /api/groups/members': {
+    requiresAuth: true,
+    description: 'Add or remove group members',
+  },
+  'PUT /api/groups/delete': {
     requiresAuth: true,
     description: 'Delete group',
   },
 
   // Setlist routes
-  'POST /setlists/create': {
+  'POST /api/setlists/create': {
     requiresAuth: true,
     description: 'Create new setlist',
   },
-  'GET /setlists/get': {
+  'GET /api/setlists/get': {
     requiresAuth: false,
+    optionalAuth: true,
     description: 'View setlists',
   },
-  'PUT /setlists/update': {
+  'PUT /api/setlists/update': {
     requiresAuth: true,
     description: 'Update setlist',
   },
-  'PUT /setlists/delete': {
+  'PUT /api/setlists/delete': {
     requiresAuth: true,
     description: 'Delete setlist',
   },
 
   // Song routes
-  'POST /songs/create': {
+  'POST /api/songs/create': {
     requiresAuth: true,
     allowedAccessTypes: ALL_ACCESS_TYPES,
     description: 'Create new song',
   },
-  'GET /songs/get': {
+  'GET /api/songs/get': {
     requiresAuth: false,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
     description: 'View songs (admin view)',
   },
-  'GET /songs/get-view': {
+  'GET /api/songs/get-view': {
     requiresAuth: false, // Public view
     description: 'Public song view',
   },
-  'PUT /songs/update': {
+  'PUT /api/songs/update': {
     requiresAuth: true,
     allowedAccessTypes: ALL_ACCESS_TYPES,
     description: 'Update song',
   },
-  'PUT /songs/delete': {
+  'PUT /api/songs/delete': {
     requiresAuth: true,
     allowedAccessTypes: ALL_ACCESS_TYPES,
     description: 'Delete song',
   },
-  'GET /songs/search': {
+  'GET /api/songs/search': {
     requiresAuth: false,
     description: 'Search songs',
-  },
-
-  // Song Options routes
-  'POST /song-options/create': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Create song option',
-  },
-  'GET /song-options/get': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Get specific song option',
-  },
-  'GET /song-options/list': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'List all song options',
-  },
-  'PUT /song-options/update': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Update song option',
-  },
-  'PUT /song-options/delete': {
-    requiresAuth: true,
-    allowedAccessTypes: ALL_ACCESS_TYPES,
-    description: 'Delete song option',
   },
 };

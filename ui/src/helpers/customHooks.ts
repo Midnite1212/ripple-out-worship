@@ -1,121 +1,143 @@
-import { customAxios as axios } from '../components/custom/customAxios';
-import { Setlist, SetlistFolder } from '../types/setlist.types';
-import { SongSchema, SongViewSchema } from '../types/song.types';
+import { isAxiosError } from 'axios';
 import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { updateAxiosClient } from '../components/custom/customAxios';
-import { User } from '../types/user.types';
+import { useDispatch } from 'react-redux';
+import { customAxios as axios, updateAxiosClient } from '../components/custom/customAxios';
 import { fetchOwnership, fetchSongs } from '../reducers';
+import { signout } from '../reducers/userSlice';
+import { persistor, useAppSelector } from '../store';
 import { Ownership } from '../types/ownership.types';
+import { Setlist } from '../types/setlist.types';
+import { SongSchema } from '../types/song.types';
+import { User } from '../types/user.types';
+import { logRequestError } from './global';
 
-type RootState = {
-  user: string;
-  songs: SongSchema[] | SongViewSchema[];
-  setlists: Setlist[];
-  folders: SetlistFolder[];
-  ownership: Ownership;
+type VerifiedSession = {
+  token: string;
+  user?: User;
 };
 
 export const useUser = (): { token: string; user?: User; loading: boolean } => {
-  const token = useSelector((state: RootState) => state.user);
+  const token = useAppSelector((state) => state.user);
   const dispatch = useDispatch();
-  const [user, setUser] = useState<User>();
-  const [loading, setLoading] = useState(false);
+  const hasToken = typeof token === 'string' && token.length > 0;
+  const [session, setSession] = useState<VerifiedSession>();
 
   useEffect(() => {
-    const fetchUser = async () => {
+    if (!hasToken) {
+      return;
+    }
+    let ignore = false;
+    const verifySession = async () => {
+      let verifiedUser: User | undefined;
       try {
-        setLoading(true);
-        const { data } = await axios.post<User>('/external-api/auth/verify-token', {
-          token: token,
-        });
-        updateAxiosClient(token);
-        setUser(data);
-        const { data: ownershipData, status } = await axios.get('/api/ownerships/get', {
-          params: {
-            userId: data.id,
-          },
-          validateStatus: function (status) {
-            return status >= 200 && status < 500; // Don't reject on 404
-          },
-        });
-        if (status === 200 && ownershipData) {
-          dispatch(fetchOwnership(ownershipData));
-        } else {
-          const { data: createOwnership, status: createStatus } = await axios.post(
-            '/api/ownerships/create',
-            {
-              userId: data.id,
-              fullName: data.fullName,
-              accessType: data.accessType,
-              setlistIds: [],
-              groupIds: [],
-            }
-          );
-          if (createStatus === 200) {
-            dispatch(fetchOwnership(createOwnership[0]));
-          }
+        const { data } = await axios.post<User>('/external-api/auth/verify-token', { token });
+        if (ignore) {
+          return;
         }
-      } catch (err: any) {
-        if (err?.response?.data?.raw === 'token-expired') {
-          localStorage.clear();
-          window.location.reload();
+        updateAxiosClient(token);
+        verifiedUser = data;
+        const { data: ownershipData, status } = await axios.get<Ownership>('/api/ownerships/get', {
+          params: { userId: data.id },
+          validateStatus: (responseStatus) => responseStatus === 200 || responseStatus === 404,
+        });
+        if (ignore) {
+          return;
+        }
+        if (status === 404) {
+          const { data: createdOwnership } = await axios.post<Ownership>('/api/ownerships/create', {
+            userId: data.id,
+            fullName: data.fullName,
+            setlistIds: [],
+            groupIds: [],
+          });
+          if (!ignore) {
+            dispatch(fetchOwnership(createdOwnership));
+          }
+        } else {
+          dispatch(fetchOwnership(ownershipData));
+        }
+      } catch (err: unknown) {
+        if (ignore) {
+          return;
+        }
+        logRequestError('Session verification failed', err);
+        if (isAxiosError(err) && err.response?.data?.raw === 'token-expired') {
+          await persistor.purge();
+          dispatch(signout());
         }
       } finally {
-        setLoading(false);
+        if (!ignore) {
+          setSession({ token, user: verifiedUser });
+        }
       }
     };
-    fetchUser();
-  }, [token, dispatch, setLoading]);
-  return { token, user: user, loading: loading };
+    verifySession();
+    return () => {
+      ignore = true;
+    };
+  }, [dispatch, hasToken, token]);
+
+  const isVerified = hasToken && session?.token === token;
+  return {
+    token,
+    user: isVerified ? session?.user : undefined,
+    loading: hasToken && !isVerified,
+  };
 };
+
 export const useSongs = (id?: string) => {
   const dispatch = useDispatch();
   useEffect(() => {
     const fetchAllSongs = async () => {
       try {
-        const { data, status } = await axios.get('/api/songs/get');
+        const { data, status } = await axios.get<SongSchema[]>('/api/songs/get');
         if (status === 200) {
           dispatch(fetchSongs(data));
         }
       } catch (e) {
-        console.log(e);
+        logRequestError('Error fetching songs:', e);
       }
     };
     fetchAllSongs();
   }, [dispatch]);
 
-  const allSongs = useSelector((state: RootState) => state.songs);
+  const allSongs = useAppSelector((state) => state.songs);
   if (id) {
     const song = allSongs.find((song) => song._id === id);
     return song;
   }
   return allSongs;
 };
-/**
- * @deprecated Use axios calls with the proper params from useOwnership instead.
- */
-export const useSetlists = (id?: string) => {
-  const allSetlists = useSelector((state: RootState) => state.setlists);
-  if (id) {
-    const setlist = allSetlists.find((setlist) => setlist._id === id);
-    return setlist;
-  }
-  return allSetlists;
-};
-/**
- * @deprecated Use axios calls with the proper params from useOwnership instead.
- */
-export const useFolders = (id?: string) => {
-  const allFolders = useSelector((state: RootState) => state.folders);
-  if (id) {
-    const folder = allFolders.find((folder) => folder._id === id);
-    return folder;
-  }
-  return allFolders;
-};
 
 export const useOwnership = () => {
-  const ownership = useSelector((state: RootState) => state.ownership);
+  const ownership = useAppSelector((state) => state.ownership);
   return ownership;
+};
+
+export const useOwnedSetlists = () => {
+  const ownership = useOwnership();
+  const [setlists, setSetlists] = useState<Setlist[]>([]);
+
+  useEffect(() => {
+    const fetchSetlists = async () => {
+      const setlistIds = ownership?.setlistIds ?? [];
+      if (setlistIds.length > 0) {
+        try {
+          const setlistRes = await axios.get<Setlist[]>('/api/setlists/get');
+          if (setlistRes.status === 200) {
+            const filteredSetlists = setlistRes.data.filter((setlist) =>
+              setlistIds.some((setlistOwnership) => setlistOwnership.id === setlist._id)
+            );
+            setSetlists(filteredSetlists);
+          }
+        } catch (error) {
+          logRequestError('Error fetching setlists:', error);
+        }
+      }
+    };
+
+    fetchSetlists();
+  }, [ownership]);
+
+  return setlists;
 };

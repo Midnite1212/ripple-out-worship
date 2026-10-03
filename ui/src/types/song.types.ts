@@ -15,7 +15,7 @@ type SongEditorFields = {
 };
 
 interface SongEditorProps {
-  actionOnEditor: string;
+  actionOnEditor?: string;
 }
 
 export type { SongEditorFields, SongEditorProps };
@@ -39,7 +39,7 @@ export type SongCardProps = {
   createdBy: User;
   lastUpdatedBy: User;
   filterData?: SongSearchFilter;
-  isVerified: Boolean;
+  isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
   showDetails?: boolean;
@@ -47,12 +47,8 @@ export type SongCardProps = {
 };
 
 export type SongSearchProps = {
-  songs: SongSchema[];
-  filterData: SongSearchFilter | undefined;
+  isMobile: boolean;
   setFilterData: React.Dispatch<React.SetStateAction<SongSearchFilter | undefined>>;
-  onClose: () => void;
-  setSearch?: React.Dispatch<React.SetStateAction<string>>;
-  isDesktop: boolean;
 };
 
 export type SongSearchFilter = {
@@ -77,6 +73,8 @@ export type SongViewSchema = {
   timeSignature: string[];
   tempo: string[];
   originalKey: string;
+  key?: string;
+  recommendedKeys?: string[];
   themes: string[];
   artist: string;
   year: string;

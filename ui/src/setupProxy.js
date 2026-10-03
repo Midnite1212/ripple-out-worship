@@ -1,18 +1,14 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function (app) {
-  console.log('Proxy middleware is being used');
-
   app.use(
     '/api',
     createProxyMiddleware({
       target: 'http://localhost:1338',
       changeOrigin: true,
-      logLevel: 'debug',
+      logLevel: 'warn',
     })
   );
-
-  console.log('Proxy middleware setup complete');
 
   // Proxy specifically for HMCC API
   app.use(
@@ -23,9 +19,7 @@ module.exports = function (app) {
       pathRewrite: {
         '^/external-api': '/api',
       },
-      logLevel: 'debug',
+      logLevel: 'warn',
     })
   );
-
-  console.log('Proxy middleware setup complete');
 };

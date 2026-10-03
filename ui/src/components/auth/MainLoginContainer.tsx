@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import { Box, Stack, Typography } from '@mui/material';
 import LoginContainer from './LoginContainer';
 import RegisterContainer from './RegisterContainer';
@@ -6,7 +7,8 @@ import ResetPasswordContainer from './ResetPasswordContainer';
 import RecoverPasswordContainer from './RecoverPasswordContainer';
 
 const MainLoginContainer: React.FC = () => {
-  const pathname = window.location.pathname.split('/');
+  const location = useLocation();
+  const pathname = location.pathname.split('/');
   const pageName = pathname[pathname.length - 1];
 
   const renderPage = () => {

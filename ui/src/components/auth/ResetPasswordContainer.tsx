@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { customAxios as axios } from '../custom/customAxios';
 import {
@@ -17,7 +18,9 @@ import { z } from 'zod';
 import { ResetPasswordFields } from '../../types/form.types';
 import { formSpacing } from '../../constants';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { stringValidator, passwordValidator } from './helpers/zod.validators';
+import { passwordValidator, stringValidator } from './helpers/zod.validators';
+
+const INVALID_RESET_LINK_MESSAGE = 'This reset link is invalid. Please request a new one.';
 
 // zod validation
 const resetPwdValidationSchema = z
@@ -47,6 +50,15 @@ const ResetPasswordContainer: React.FC = () => {
   const [open, setOpen] = useState<boolean>(false);
   const [status, setStatus] = useState<AlertColor | undefined>();
   const [message, setMessage] = useState<string>('');
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const token = query.get('token');
+  const email = query.get('email');
+  const hasResetParams = Boolean(token && email);
+
+  useEffect(() => {
+    return () => clearTimeout(redirectTimeoutRef.current);
+  }, []);
 
   const handleClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') {
@@ -63,10 +75,13 @@ const ResetPasswordContainer: React.FC = () => {
   const { errors } = formState;
 
   const handleResetPassword: SubmitHandler<ResetPasswordFields> = async (data) => {
+    if (!token || !email) {
+      setStatus('error');
+      setMessage(INVALID_RESET_LINK_MESSAGE);
+      setOpen(true);
+      return;
+    }
     try {
-      const token = query.get('token');
-      const email = query.get('email');
-
       const payload = await axios.post('/external-api/auth/reset-password', {
         email: email,
         token: token,
@@ -76,7 +91,7 @@ const ResetPasswordContainer: React.FC = () => {
       if (payload.status === 200) {
         setStatus('success');
         setMessage('Password successfully reset! Please login again.');
-        setTimeout(() => {
+        redirectTimeoutRef.current = setTimeout(() => {
           navigate('/login');
         }, 3000);
       } else {
@@ -84,11 +99,12 @@ const ResetPasswordContainer: React.FC = () => {
         setMessage('Error resetting password, please try again.');
       }
       setOpen(true);
-    } catch (err: any) {
-      if (err.response && err.response.status === 401) {
+    } catch (err: unknown) {
+      const errorStatus = isAxiosError(err) ? err.response?.status : undefined;
+      if (errorStatus === 401) {
         setStatus('error');
         setMessage('Invalid token, please try again.');
-      } else if (err.response && err.response.status === 422) {
+      } else if (errorStatus === 422) {
         setStatus('error');
         setMessage('Required fields not filled');
       } else {
@@ -124,6 +140,7 @@ const ResetPasswordContainer: React.FC = () => {
                 <Typography variant="subtitle1">Password</Typography>
                 <TextField
                   type="password"
+                  autoComplete="new-password"
                   {...register('password', {
                     required: 'Required',
                   })}
@@ -136,6 +153,7 @@ const ResetPasswordContainer: React.FC = () => {
                 <Typography variant="subtitle1">Confirm Password</Typography>
                 <TextField
                   type="password"
+                  autoComplete="new-password"
                   {...register('confirmPassword', {
                     required: 'Required',
                   })}
@@ -144,12 +162,18 @@ const ResetPasswordContainer: React.FC = () => {
                   helperText={errors?.confirmPassword?.message}
                 />
               </Stack>
+              {!hasResetParams && (
+                <Typography variant={'body2'} color={'error'}>
+                  {INVALID_RESET_LINK_MESSAGE}
+                </Typography>
+              )}
               <Button
                 type={'submit'}
                 color={'secondary'}
-                style={{ borderRadius: '30px' }}
+                sx={{ borderRadius: '30px' }}
                 variant={'contained'}
                 fullWidth
+                disabled={!hasResetParams}
               >
                 <Typography variant="subtitle1">Reset Password</Typography>
               </Button>
