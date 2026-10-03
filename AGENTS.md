@@ -85,16 +85,19 @@ cd ui && yarn start             # CRA on :3000; src/setupProxy.js proxies /api �
 # UI (in ui/)
 yarn typecheck                  # tsc --noEmit; 0 errors required
 CI=true yarn test --watchAll=false   # Jest unit tests; all must pass
-yarn build                      # production build → ui/build (CI moves it to server/client)
+yarn build                      # production build → ui/build (what the Vercel `ui` service runs)
 
 # Server (in server/)
 yarn typecheck                  # tsc --noEmit; 0 errors required (noUnusedLocals and noUnusedParameters are on)
 yarn test                       # node:test unit tests, no database needed (Node 21+ for the glob)
-yarn build                      # tsc -p tsconfig.build.json → server/dist, tests excluded
+yarn build                      # tsc -p tsconfig.build.json → server/dist, tests excluded; the Vercel `server` service runs it as a type gate
 
 # Lint and format (from repo root)
 yarn lint                       # eslint over ui/ and server/; 0 errors required, do not add warnings
 yarn prettier --write "<touched files>"
+
+# Both Vercel services together, no Vercel login (optional; needs the Vercel CLI)
+vercel dev -L
 ```
 
 Prettier config: `.prettierrc.json` — 2-space, single quotes, semicolons, `printWidth: 100`, `trailingComma: 'es5'`. Husky runs lint-staged (Prettier + ESLint) on commit and commitlint on the message.
@@ -135,7 +138,9 @@ Imports are **relative** (`'../../helpers/customHooks'`). The `#/*` alias in `ui
 
 | Path                                        | Role                                                                                                                                    |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.ts`                                    | Express app: CORS, `/external-api` proxy to `MAIN_URL`, JSON body, routes at `/`, static `client/` and SPA fallback outside development |
+| `app.ts`                                    | Vercel `server` service entry: default-exports the app; run directly (`yarn dev`, `yarn start`) it connects, then listens on `PORT`     |
+| `src/createApp.ts`                          | `createApp()`: CORS, `/external-api` proxy to `MAIN_URL`, `ensureDatabase` for `/api`, JSON body, routes, a JSON 404 for unknown `/api` |
+| `src/db/connect.ts`                         | `ensureDatabase()`: one memoized connect per instance, shared by concurrent requests, retried after a failure                           |
 | `src/mongoose.ts`                           | `connectToDB()` from `MONGO_*` env vars                                                                                                 |
 | `src/routes/index.ts`                       | `getRoutes()`: one router combining the ownership, group, setlist, and song routers                                                     |
 | `src/routes/<resource>.routes.ts`           | `createPermissionRouter()` + one line per action, registered with the full path (`'/api/songs/create'`)                                 |
@@ -291,7 +296,7 @@ Songs store `chordLyrics` (and optional `simplifiedChordLyrics`) as one plain-te
 ### Adding an endpoint
 
 1. Add the handler to `src/controllers/<resource>.controllers.ts` and export it.
-2. Add one line to `src/routes/<resource>.routes.ts` with the full URL: `router.get('/api/<resource>/action', handler)`. `app.ts` mounts the routers at the root, so the registered path is the exact URL the UI calls and the `ROUTE_PERMISSIONS` key, which lets GitNexus `route_map` link UI callers to the route.
+2. Add one line to `src/routes/<resource>.routes.ts` with the full URL: `router.get('/api/<resource>/action', handler)`. `createApp()` mounts the routers at the root, so the registered path is the exact URL the UI calls and the `ROUTE_PERMISSIONS` key, which lets GitNexus `route_map` link UI callers to the route.
 3. Add `'GET /api/<resource>/action'` to `ROUTE_PERMISSIONS` in `src/policies/permissions.config.ts`. A route with no entry logs a warning and falls back to `requireAuth`; never rely on that.
 
 ### Permissions
@@ -345,7 +350,7 @@ Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `se
 ## Auth Flow
 
 - The main HMCC HK site (`MAIN_URL`) owns users, login, Google login, sign-up, and password reset. This repo has no user model.
-- The UI calls `/external-api/auth/*`. In development `ui/src/setupProxy.js` rewrites that to `REACT_APP_MAIN_URL/api/*`; in production `server/app.ts` does the same with `MAIN_URL`.
+- The UI calls `/external-api/auth/*`. In development `ui/src/setupProxy.js` rewrites that to `REACT_APP_MAIN_URL/api/*`; in production the Vercel top-level rewrite sends `/external-api/*` to the `server` service, whose proxy in `src/createApp.ts` does the same with `MAIN_URL`.
 - Login returns a JWT that the UI stores in the `user` slice. `useUser()` verifies it with `/external-api/auth/verify-token`, rebuilds `customAxios`, and loads or creates the user's `Ownership` record. On `token-expired` it clears localStorage and reloads.
 - This server verifies the same JWT with the shared `JWT_KEY` and reads **`Authorization: Bearer <token>`** (standard spelling). The main site reads `Authorisation`; do not copy that spelling here, and do not "fix" either side to match the other.
 - `req.user` (`AuthenticatedRequest`) holds the decoded `{ id, emailAddress, accessType }`. Trust it for identity; never trust a `userId` or `accessType` sent in the request body.
@@ -358,19 +363,20 @@ User profiles from the main site carry personal data about real congregation mem
 - Server log lines carry IDs, not names or emails.
 - Endpoints return only the fields the UI needs. Do not add endpoints that list every ownership or user to unauthenticated callers.
 - `REACT_APP_*` values are inlined into the public bundle; never put a secret there.
-- No credentials in code. `.env` files come from GitHub secrets in CI and are never committed.
+- No credentials in code. Deployed values live in the Vercel project's environment variables; local `.env` files are never committed.
 - Public setlist links (`/setlist/view/:id`) are visible to anyone; they must show song content only, not member data.
 
 ## Environment Variables
 
 - `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_URI`, `MONGO_DB`, `MONGO_REPLICA_SET`, `MONGO_AUTH_SOURCE`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
 - `ui/.env`: `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL`. Required for `yarn start` and `yarn build`.
-- `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/`. The `dev` script sets it through `cross-env`.
+- `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/` when `app.ts` runs directly. The `dev` script sets it through `cross-env`.
+- Vercel project (all environments): `JWT_KEY`, `MAIN_URL`, `BASE_URL` (the public origin `publicLink` is built from), `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_URI`, `MONGO_DB`, `MONGO_REPLICA_SET`, `MONGO_AUTH_SOURCE` for the `server` service at runtime, and `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL` for the `ui` service at build time. `PORT` is not used on Vercel.
 
 ## CI / Deploy (`.github/workflows/`)
 
-- `build-and-upload-workflow.yml` (manual, `uat` or `prod`): Node 20, frozen-lockfile installs of all three packages, secrets passed through `env:`, writes `.env` files from `UI_ENV` / `SERVER_ENV` secrets, runs `yarn build` in `ui/` with `CI=false` (warnings do not fail it), moves `ui/build/*` → `server/client/`, deletes `ui/`, zips, uploads, and triggers the deploy workflow.
-- `deploy-and-delete-workflow.yml` validates `runId`, downloads the artifact on the server over SSH, and deletes it from GitHub. The artifact still contains `server/.env`.
+- Hosting is one Vercel project in [services](https://vercel.com/docs/services) mode, configured by the root `vercel.json`: `server` (`server/`, Express preset, one Vercel Function from `app.ts`) and `ui` (`ui/`, Create React App preset, static `build/` with the preset's `index.html` fallback for client routes). Top-level rewrites send `/api/*` and `/external-api/*` to `server` and everything else to `ui`; each service receives the original path, and routing into a service is final. Each service installs with its own `yarn.lock`. Vercel deploys from the connected Git repo; there is no deploy workflow.
+- Node 22 for builds and functions comes from the project's Node.js Version setting; `.nvmrc` pins it for local use.
 - `pr-check.yml` runs on PRs to `release` and `main`: root lint, UI typecheck and tests, server typecheck and tests (Node 22). Keep all three green.
 - `.github/copilot-instructions.md` is Copilot's short summary; this file is the source of truth when they differ.
 
@@ -388,11 +394,11 @@ Read `.claude/docs/commit-convention.md` and `.claude/docs/pr-description.md` be
 6. `t3ch` is an access type, not a typo. The UI's `UserAccessType` enum knows only `admin` and `user`.
 7. Every model has `isDeleted`; filter it on every read and update.
 8. Server tests rely on `node --test` expanding `'src/**/*.test.ts'`, which needs Node 21+; on Node 20 pass the files explicitly.
-9. The SPA is served from `server/client/` only after a CI build. Locally use the CRA dev server on :3000.
+9. On Vercel the SPA is the `ui` service, never the Express app, and `express.static` is ignored there. Locally use the CRA dev server on :3000.
 10. `#/` imports do not resolve in CRA at runtime. Use relative imports.
 11. `useUser()` hits the network on every mount; do not call it in list items.
 12. `isObjectIdString` requires a 24-character hex string; Mongoose's own `isValidObjectId` also accepts any 12-character string, so don't use it for request input.
-13. The CI build sets `CI=false`, so warnings never fail a deploy. Treat them as errors locally. `ui/.eslintrc.js` is its own ESLint root (CRA + `@typescript-eslint/recommended` + single quotes and semicolons) because `ui/` and the root install different `@typescript-eslint` versions; edit it, not the root config, for UI rules.
+13. Vercel builds with `CI=1`, so a CRA warning fails the `ui` deploy. Check with `CI=true yarn build` in `ui/`. `ui/.eslintrc.js` is its own ESLint root (CRA + `@typescript-eslint/recommended` + single quotes and semicolons) because `ui/` and the root install different `@typescript-eslint` versions; edit it, not the root config, for UI rules.
 14. Route `key`s in `routes.ts` must be unique, and React keys from data (`_id`), not indexes.
 
 ## Tooling
