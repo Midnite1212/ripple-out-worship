@@ -376,7 +376,7 @@ User profiles from the main site carry personal data about real congregation mem
 
 ## Environment Variables
 
-- `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `DATABASE_URL` (Postgres connection string; Neon's pooled `-pooler` URL with `sslmode=require` works), `EMAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
+- `server/.env` (loaded by `dotenv` in `app.ts`): `PORT`, `MAIN_URL`, `BASE_URL`, `JWT_KEY`, `DATABASE_URL` (Postgres connection string; Neon's pooled `-pooler` URL with `sslmode=require` works), optional `DATABASE_POOL_MAX` (connections per function instance, default 3).
 - `DATABASE_URL_TEST` (shell only, never in `.env`): a disposable Postgres database for `yarn test`; the integration suites migrate it and truncate every table, take turns through an advisory lock (`src/testing/databaseLock.ts`), and are skipped when it is unset (CI runs without it).
 - `ui/.env`: `REACT_APP_GOOGLE_CLIENT_ID`, `REACT_APP_MAIN_URL`. Required for `yarn start` and `yarn build`.
 - `NODE_ENV=test` means "local development" in this repo: it disables static serving of `server/client/` when `app.ts` runs directly. The `dev` script sets it through `cross-env`.
