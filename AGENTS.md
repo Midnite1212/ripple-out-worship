@@ -94,6 +94,7 @@ DATABASE_URL_TEST=<url> yarn test  # also runs src/db/integration.test.ts agains
 yarn build                      # tsc -p tsconfig.build.json → server/dist, tests excluded; the Vercel `server` service runs it as a type gate
 yarn db:generate                # drizzle-kit generate: new SQL migration in server/drizzle/ from src/db/schema.ts
 yarn db:migrate                 # drizzle-kit migrate: apply pending migrations to DATABASE_URL
+yarn import:songs --file <songs.json> [--apply]  # one-off MongoDB songs import; see #cutover-from-mongodb-songs-only
 
 # Lint and format (from repo root)
 yarn lint                       # eslint over ui/ and server/; 0 errors required, do not add warnings
@@ -350,9 +351,19 @@ Shared helpers in `src/utils/`: `sendResponse` / `sendError` (`response.ts`; `se
 
 `server/tsconfig.json` has `noUnusedLocals` and `noUnusedParameters`. Prefix intentionally unused parameters with `_`. `yarn tsc --noEmit` in `server/` must show 0 errors.
 
-### Legacy data backfill
+### Cutover from MongoDB (songs only)
 
-`src/utils/legacyOwnership.ts` holds the rules for repairing legacy MongoDB data: fill a missing `createdBy` on setlists and folders when exactly one live ownership lists them, and merge `folder.setlistIds` with `setlist.groupIds` as a union. The one-off MongoDB → Postgres import script (#34) applies that plan while loading; ownership entry ids are stored without foreign keys, while dangling song, setlist, or folder references in links are skipped because those tables have foreign keys.
+Only songs move to Postgres. Setlists, folders, and ownerships are not imported; each user's ownership record is recreated on first login. `scripts/import-songs.ts` (outside the build) maps each exported document with `src/db/importSongs.ts`, keeping the Mongo `_id` as the row id, skips documents with a bad id, a missing required field, or a duplicate id (reported by index and id only), and inserts in one transaction with `on conflict (id) do nothing`, so a re-run is a no-op. Use Neon's direct (non-pooled) URL for the migration and the import, and keep the export outside the repo:
+
+```bash
+mongoexport --uri '<mongo uri>' --collection=songs --jsonArray --out=<outside the repo>/songs.json
+cd server
+DATABASE_URL='<neon direct url>' yarn db:migrate
+yarn import:songs --file <outside the repo>/songs.json --database-url '<neon direct url>'          # dry run: read, valid, skipped ids, would insert
+yarn import:songs --file <outside the repo>/songs.json --database-url '<neon direct url>' --apply  # inserted vs already present
+```
+
+Then set the Vercel `DATABASE_URL` to Neon's pooled `-pooler` URL and redeploy.
 
 ## Auth Flow
 
