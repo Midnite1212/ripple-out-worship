@@ -1,15 +1,12 @@
-import { Types } from 'mongoose';
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test';
-import { Ownership } from '../models/ownership.model';
-import { MUSIC_KEYS, Setlist } from '../models/setlist.model';
-import {
-  FakeRequestInit,
-  callHandler,
-  createRequest,
-  createResponse,
-  execResult,
-} from '../testing/http';
+import { groupRepository } from '../db/repositories/group.repository';
+import { CallerAccess, ownershipRepository } from '../db/repositories/ownership.repository';
+import { setlistRepository } from '../db/repositories/setlist.repository';
+import { MUSIC_KEYS } from '../db/schema';
+import { FakeRequestInit, callHandler, createRequest, createResponse } from '../testing/http';
+import { GroupAccess } from '../types/group.types';
+import { SetlistAccess } from '../types/setlist.types';
 import { TokenUser } from '../utils/verify-jwt';
 import {
   createSetlist,
@@ -17,6 +14,7 @@ import {
   getSetlist,
   keepSetlistSongKeys,
   parseSongKeys,
+  resolveGroupLinks,
   updateSetlist,
 } from './setlist.controllers';
 
@@ -31,6 +29,7 @@ const SONG_C = '507f1f77bcf86cd799439033';
 const GROUP_ID = '507f1f77bcf86cd799439041';
 const OTHER_GROUP_ID = '507f1f77bcf86cd799439042';
 const FORBIDDEN = { error: 'Access denied', message: 'Forbidden' };
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
 
 const call = async (handler: Parameters<typeof callHandler>[0], init: FakeRequestInit) => {
   const res = createResponse();
@@ -40,20 +39,30 @@ const call = async (handler: Parameters<typeof callHandler>[0], init: FakeReques
 
 const entry = (id: string) => ({ createdAt: '2026-01-01T00:00:00.000Z', id, name: 'Entry' });
 
-const mockOwnership = (ownership: unknown) =>
-  mock.method(Ownership, 'findOne', () => execResult(ownership));
+const mockOwnership = (ownership: CallerAccess | null) =>
+  mock.method(ownershipRepository, 'findCallerAccess', async () => ownership);
 
-const storedSetlist = (fields: Record<string, unknown>) => ({
-  _id: new Types.ObjectId(SETLIST_ID),
+const storedSetlist = (fields: Partial<SetlistAccess>): SetlistAccess => ({
+  _id: SETLIST_ID,
   groupIds: [],
   songs: [],
   ...fields,
 });
 
-const populatedExec = (value: unknown) => {
-  const populate = mock.fn(() => execResult(value));
-  return { chain: { populate }, populate };
-};
+const mockStored = (setlist: SetlistAccess | null) =>
+  mock.method(setlistRepository, 'findLiveAccess', async () => setlist);
+
+const folder = (id: string, createdBy?: string): GroupAccess => ({
+  _id: id,
+  createdAt: CREATED_AT,
+  groupName: 'Team',
+  ...(createdBy ? { createdBy } : {}),
+});
+
+const mockFolders = (...groups: GroupAccess[]) =>
+  mock.method(groupRepository, 'findLiveAccessByIds', async (ids: string[]) =>
+    groups.filter(({ _id }) => ids.includes(_id))
+  );
 
 describe('setlist songKeys helpers', () => {
   describe('parseSongKeys', () => {
@@ -96,7 +105,7 @@ describe('setlist songKeys helpers', () => {
         { key: 'C' },
         { songId: SONG_A },
         { key: 'C', songId: 'bad' },
-        { key: 'C', songId: new Types.ObjectId(SONG_A) },
+        { key: 'C', songId: { toString: () => SONG_A } },
       ]) {
         assert.equal(parseSongKeys([valid, invalid]), null, JSON.stringify(invalid));
       }
@@ -141,9 +150,9 @@ describe('setlist songKeys helpers', () => {
       );
     });
 
-    it('matches ObjectId song ids by their string form', () => {
+    it('matches song ids by their string form', () => {
       assert.deepEqual(
-        keepSetlistSongKeys([{ key: 'G', songId: SONG_A }], [new Types.ObjectId(SONG_A)]),
+        keepSetlistSongKeys([{ key: 'G', songId: SONG_A }], [{ toString: () => SONG_A }]),
         [{ key: 'G', songId: SONG_A }]
       );
     });
@@ -169,6 +178,48 @@ describe('setlist songKeys helpers', () => {
   });
 });
 
+describe('resolveGroupLinks', () => {
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  it('skips the lookup when the folder links are unchanged', async () => {
+    const lookup = mockFolders();
+    assert.deepEqual(await resolveGroupLinks(USER, null, [GROUP_ID], [GROUP_ID]), [GROUP_ID]);
+    assert.equal(lookup.mock.callCount(), 0);
+  });
+
+  it('allows linking folders the caller created, is a member of, or any folder for an admin', async () => {
+    mockFolders(folder(GROUP_ID, USER.id), folder(OTHER_GROUP_ID, OTHER_USER_ID));
+    assert.deepEqual(await resolveGroupLinks(USER, null, [GROUP_ID], []), [GROUP_ID]);
+    assert.deepEqual(
+      await resolveGroupLinks(
+        USER,
+        { groupIds: [entry(OTHER_GROUP_ID)], setlistIds: [] },
+        [OTHER_GROUP_ID],
+        []
+      ),
+      [OTHER_GROUP_ID]
+    );
+    assert.deepEqual(await resolveGroupLinks(ADMIN, null, [OTHER_GROUP_ID], []), [OTHER_GROUP_ID]);
+  });
+
+  it('refuses to link a folder the caller cannot edit, or one that does not exist', async () => {
+    mockFolders(folder(OTHER_GROUP_ID, OTHER_USER_ID));
+    assert.equal(await resolveGroupLinks(USER, null, [OTHER_GROUP_ID], []), null);
+    assert.equal(await resolveGroupLinks(ADMIN, null, [GROUP_ID], []), null);
+  });
+
+  it('keeps links to live folders the caller cannot edit and drops the rest', async () => {
+    mockFolders(folder(GROUP_ID, USER.id), folder(OTHER_GROUP_ID, OTHER_USER_ID));
+    const missingGroupId = '507f1f77bcf86cd799439043';
+    assert.deepEqual(
+      await resolveGroupLinks(USER, null, [], [GROUP_ID, OTHER_GROUP_ID, missingGroupId]),
+      [OTHER_GROUP_ID]
+    );
+  });
+});
+
 describe('setlist controllers', () => {
   const originalBaseUrl = process.env.BASE_URL;
 
@@ -191,7 +242,7 @@ describe('setlist controllers', () => {
 
   describe('createSetlist', () => {
     it('rejects a request without req.user', async () => {
-      const create = mock.method(Setlist, 'create', async () => ({}));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
       const res = await call(createSetlist, { body: { name: 'Sunday' } });
       assert.equal(res.statusCode, 401);
       assert.equal(res.body, 'Unauthorized');
@@ -199,7 +250,7 @@ describe('setlist controllers', () => {
     });
 
     it('rejects a body with no allowed fields', async () => {
-      const create = mock.method(Setlist, 'create', async () => ({}));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
       for (const body of [undefined, {}, { createdBy: USER.id, publicLink: 'x' }]) {
         const res = await call(createSetlist, { body, user: USER });
         assert.equal(res.statusCode, 400);
@@ -209,7 +260,7 @@ describe('setlist controllers', () => {
     });
 
     it('rejects invalid songKeys', async () => {
-      const create = mock.method(Setlist, 'create', async () => ({}));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
       for (const songKeys of [null, 'C', [{ key: 'H', songId: SONG_A }]]) {
         const res = await call(createSetlist, {
           body: { name: 'Sunday', songKeys, songs: [SONG_A] },
@@ -223,12 +274,14 @@ describe('setlist controllers', () => {
 
     it('creates from allowed fields with server-set _id, createdBy and publicLink', async () => {
       const created = { name: 'Sunday' };
-      const create = mock.method(Setlist, 'create', async () => created);
+      mockOwnership(null);
+      mockFolders(folder(GROUP_ID, USER.id));
+      const create = mock.method(setlistRepository, 'create', async () => created);
       const res = await call(createSetlist, {
         body: {
           createdBy: 'someone-else',
           date: '2026-10-04',
-          groupIds: [OTHER_SETLIST_ID],
+          groupIds: [GROUP_ID],
           isDeleted: true,
           name: 'Sunday',
           publicLink: 'https://evil.example',
@@ -240,15 +293,16 @@ describe('setlist controllers', () => {
         },
         user: USER,
       });
-      const arg = create.mock.calls[0]?.arguments[0] as Record<string, unknown>;
+      const arg = create.mock.calls[0]?.arguments[0];
+      assert.ok(arg);
       const { _id, ...rest } = arg;
-      assert.ok(_id instanceof Types.ObjectId);
+      assert.match(_id, /^[0-9a-f]{24}$/);
       assert.deepEqual(rest, {
         createdBy: USER.id,
         date: '2026-10-04',
-        groupIds: [OTHER_SETLIST_ID],
+        groupIds: [GROUP_ID],
         name: 'Sunday',
-        publicLink: `https://worship.example/setlist/view/${String(_id)}`,
+        publicLink: `https://worship.example/setlist/view/${_id}`,
         songKeys: [{ key: 'D', songId: SONG_A }],
         songs: [SONG_A, SONG_B],
       });
@@ -256,8 +310,32 @@ describe('setlist controllers', () => {
       assert.equal(res.body, created);
     });
 
+    it('forbids creating a setlist inside a folder the caller cannot edit', async () => {
+      mockOwnership({ groupIds: [entry(OTHER_GROUP_ID)], setlistIds: [] });
+      mockFolders(folder(GROUP_ID, OTHER_USER_ID));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
+      const res = await call(createSetlist, {
+        body: { groupIds: [GROUP_ID], name: 'Sunday' },
+        user: USER,
+      });
+      assert.equal(res.statusCode, 403);
+      assert.deepEqual(res.body, FORBIDDEN);
+      assert.equal(create.mock.callCount(), 0);
+    });
+
+    it('rejects groupIds that are not object ids', async () => {
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
+      const res = await call(createSetlist, {
+        body: { groupIds: ['bad'], name: 'Sunday' },
+        user: USER,
+      });
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body, 'Invalid request');
+      assert.equal(create.mock.callCount(), 0);
+    });
+
     it('rejects songKeys sent without a songs list', async () => {
-      const create = mock.method(Setlist, 'create', async () => ({}));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
       for (const songs of [undefined, null, { 0: SONG_A }]) {
         const res = await call(createSetlist, {
           body: { name: 'Sunday', songKeys: [{ key: 'D', songId: SONG_A }], songs },
@@ -270,17 +348,18 @@ describe('setlist controllers', () => {
     });
 
     it('keeps the song key when songs is a single id string', async () => {
-      const create = mock.method(Setlist, 'create', async () => ({}));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
       await call(createSetlist, {
         body: { name: 'Sunday', songKeys: [{ key: 'D', songId: SONG_A }], songs: SONG_A },
         user: USER,
       });
-      const arg = create.mock.calls[0]?.arguments[0] as Record<string, unknown>;
-      assert.deepEqual(arg.songKeys, [{ key: 'D', songId: SONG_A }]);
+      assert.deepEqual(create.mock.calls[0]?.arguments[0]?.songKeys, [
+        { key: 'D', songId: SONG_A },
+      ]);
     });
 
     it('builds publicLink from the request when BASE_URL is unset', async () => {
-      const create = mock.method(Setlist, 'create', async () => ({}));
+      const create = mock.method(setlistRepository, 'create', async () => ({}));
       delete process.env.BASE_URL;
       try {
         await call(createSetlist, {
@@ -292,46 +371,42 @@ describe('setlist controllers', () => {
       } finally {
         process.env.BASE_URL = 'https://worship.example';
       }
-      const arg = create.mock.calls[0]?.arguments[0] as Record<string, unknown>;
-      assert.equal(arg.publicLink, `http://localhost:8080/setlist/view/${String(arg._id)}`);
+      const arg = create.mock.calls[0]?.arguments[0];
+      assert.equal(arg?.publicLink, `http://localhost:8080/setlist/view/${arg?._id}`);
     });
   });
 
   describe('getSetlist', () => {
     it('rejects an id list containing an invalid id', async () => {
-      const find = mock.method(Setlist, 'find', () => populatedExec([]).chain);
+      const findLiveByIds = mock.method(setlistRepository, 'findLiveByIds', async () => []);
       const res = await call(getSetlist, { query: { id: [SETLIST_ID, 'bad'] } });
       assert.equal(res.statusCode, 400);
       assert.equal(res.body, 'Invalid setlist id');
-      assert.equal(find.mock.callCount(), 0);
+      assert.equal(findLiveByIds.mock.callCount(), 0);
     });
 
-    it('reads an id list with the public projection for anonymous callers', async () => {
+    it('reads an id list with the public view for anonymous callers', async () => {
       const setlists = [{ _id: SETLIST_ID }];
-      const { chain, populate } = populatedExec(setlists);
-      const find = mock.method(Setlist, 'find', () => chain);
+      const findLiveByIds = mock.method(setlistRepository, 'findLiveByIds', async () => setlists);
       const res = await call(getSetlist, { query: { id: [SETLIST_ID, OTHER_SETLIST_ID] } });
-      assert.deepEqual(find.mock.calls[0]?.arguments, [
-        { _id: { $in: [SETLIST_ID, OTHER_SETLIST_ID] }, isDeleted: false },
-        '-createdBy -lastUpdatedBy -groupIds',
-      ]);
-      assert.deepEqual(populate.mock.calls[0]?.arguments, [
-        { path: 'songs', select: '-createdBy -lastUpdatedBy' },
+      assert.deepEqual(findLiveByIds.mock.calls[0]?.arguments, [
+        [SETLIST_ID, OTHER_SETLIST_ID],
+        'public',
       ]);
       assert.equal(res.statusCode, 200);
       assert.equal(res.body, setlists);
     });
 
-    it('reads an id list with full fields for authenticated callers', async () => {
-      const { chain, populate } = populatedExec([{ _id: SETLIST_ID }]);
-      const find = mock.method(Setlist, 'find', () => chain);
+    it('reads an id list with the full view for authenticated callers', async () => {
+      const findLiveByIds = mock.method(setlistRepository, 'findLiveByIds', async () => [
+        { _id: SETLIST_ID },
+      ]);
       await call(getSetlist, { query: { id: [SETLIST_ID] }, user: USER });
-      assert.deepEqual((find.mock.calls[0]?.arguments as unknown[] | undefined)?.[1], {});
-      assert.deepEqual(populate.mock.calls[0]?.arguments, [{ path: 'songs' }]);
+      assert.deepEqual(findLiveByIds.mock.calls[0]?.arguments, [[SETLIST_ID], 'full']);
     });
 
     it('returns 404 for an id list with no matches, including an empty list', async () => {
-      mock.method(Setlist, 'find', () => populatedExec([]).chain);
+      mock.method(setlistRepository, 'findLiveByIds', async () => []);
       for (const id of [[SETLIST_ID], []]) {
         const res = await call(getSetlist, { query: { id } });
         assert.equal(res.statusCode, 404);
@@ -340,79 +415,67 @@ describe('setlist controllers', () => {
     });
 
     it('rejects an invalid single id', async () => {
-      const findOne = mock.method(Setlist, 'findOne', () => populatedExec(null).chain);
+      const findLiveById = mock.method(setlistRepository, 'findLiveById', async () => null);
       for (const id of ['bad', '', { $ne: null }]) {
         const res = await call(getSetlist, { query: { id } });
         assert.equal(res.statusCode, 400);
         assert.equal(res.body, 'Invalid setlist id');
       }
-      assert.equal(findOne.mock.callCount(), 0);
+      assert.equal(findLiveById.mock.callCount(), 0);
     });
 
-    it('reads a single id with the projection for the caller', async () => {
+    it('reads a single id with the view for the caller', async () => {
       const setlist = { _id: SETLIST_ID };
-      const { chain, populate } = populatedExec(setlist);
-      const findOne = mock.method(Setlist, 'findOne', () => chain);
+      const findLiveById = mock.method(setlistRepository, 'findLiveById', async () => setlist);
       const res = await call(getSetlist, { query: { id: SETLIST_ID } });
-      assert.deepEqual(findOne.mock.calls[0]?.arguments, [
-        { _id: SETLIST_ID, isDeleted: false },
-        '-createdBy -lastUpdatedBy -groupIds',
-      ]);
-      assert.deepEqual(populate.mock.calls[0]?.arguments, [
-        { path: 'songs', select: '-createdBy -lastUpdatedBy' },
-      ]);
+      await call(getSetlist, { query: { id: SETLIST_ID }, user: USER });
+      assert.deepEqual(
+        findLiveById.mock.calls.map((c) => c.arguments),
+        [
+          [SETLIST_ID, 'public'],
+          [SETLIST_ID, 'full'],
+        ]
+      );
       assert.equal(res.statusCode, 200);
       assert.equal(res.body, setlist);
     });
 
     it('returns 404 for a missing single setlist', async () => {
-      mock.method(Setlist, 'findOne', () => populatedExec(null).chain);
+      mock.method(setlistRepository, 'findLiveById', async () => null);
       const res = await call(getSetlist, { query: { id: SETLIST_ID }, user: USER });
       assert.equal(res.statusCode, 404);
       assert.equal(res.body, 'Setlist not found');
     });
 
     it('rejects listing every setlist without req.user', async () => {
-      const find = mock.method(Setlist, 'find', () => populatedExec([]).chain);
+      const list = mock.method(setlistRepository, 'listLiveReachable', async () => []);
       const res = await call(getSetlist, {});
       assert.equal(res.statusCode, 401);
       assert.equal(res.body, 'Unauthorized');
-      assert.equal(find.mock.callCount(), 0);
+      assert.equal(list.mock.callCount(), 0);
     });
 
     it('lists every live setlist for an admin without reading ownership', async () => {
-      const ownershipFindOne = mockOwnership(null);
-      const { chain, populate } = populatedExec([]);
-      const find = mock.method(Setlist, 'find', () => chain);
+      const findCallerAccess = mockOwnership(null);
+      const list = mock.method(setlistRepository, 'listLiveReachable', async () => []);
       const res = await call(getSetlist, { user: ADMIN });
-      assert.deepEqual(find.mock.calls[0]?.arguments, [{ isDeleted: false }]);
-      assert.deepEqual(populate.mock.calls[0]?.arguments, ['songs']);
-      assert.equal(ownershipFindOne.mock.callCount(), 0);
+      assert.deepEqual(list.mock.calls[0]?.arguments, [{ all: true }]);
+      assert.equal(findCallerAccess.mock.callCount(), 0);
       assert.equal(res.statusCode, 200);
       assert.deepEqual(res.body, []);
     });
 
     it('lists only setlists the caller created, owns, or reaches through a folder', async () => {
-      const ownershipFindOne = mockOwnership({
+      const findCallerAccess = mockOwnership({
         groupIds: [entry(GROUP_ID), entry('legacy-group')],
         setlistIds: [entry(SETLIST_ID)],
       });
       const setlists = [{ _id: SETLIST_ID }];
-      const find = mock.method(Setlist, 'find', () => populatedExec(setlists).chain);
+      const list = mock.method(setlistRepository, 'listLiveReachable', async () => setlists);
       const res = await call(getSetlist, { user: USER });
-      assert.deepEqual(ownershipFindOne.mock.calls[0]?.arguments, [
-        { isDeleted: false, userId: USER.id },
-        'groupIds setlistIds',
-      ]);
-      assert.deepEqual(find.mock.calls[0]?.arguments, [
-        {
-          $or: [
-            { _id: { $in: [SETLIST_ID] } },
-            { groupIds: { $in: [GROUP_ID] } },
-            { createdBy: USER.id },
-          ],
-          isDeleted: false,
-        },
+      assert.deepEqual(findCallerAccess.mock.calls[0]?.arguments, [USER.id]);
+      assert.deepEqual(list.mock.calls[0]?.arguments, [
+        { createdBy: USER.id, groupIds: [GROUP_ID], setlistIds: [SETLIST_ID] },
       ]);
       assert.equal(res.statusCode, 200);
       assert.equal(res.body, setlists);
@@ -420,27 +483,24 @@ describe('setlist controllers', () => {
 
     it('lists only created setlists for a caller with no ownership record', async () => {
       mockOwnership(null);
-      const find = mock.method(Setlist, 'find', () => populatedExec([]).chain);
+      const list = mock.method(setlistRepository, 'listLiveReachable', async () => []);
       await call(getSetlist, { user: USER });
-      assert.deepEqual(find.mock.calls[0]?.arguments, [
-        {
-          $or: [{ _id: { $in: [] } }, { groupIds: { $in: [] } }, { createdBy: USER.id }],
-          isDeleted: false,
-        },
+      assert.deepEqual(list.mock.calls[0]?.arguments, [
+        { createdBy: USER.id, groupIds: [], setlistIds: [] },
       ]);
     });
   });
 
   describe('updateSetlist', () => {
     it('rejects a request without req.user', async () => {
-      const findOne = mock.method(Setlist, 'findOne', () => execResult(null));
+      const findLiveAccess = mockStored(null);
       const res = await call(updateSetlist, { body: { id: SETLIST_ID, name: 'Sunday' } });
       assert.equal(res.statusCode, 401);
-      assert.equal(findOne.mock.callCount(), 0);
+      assert.equal(findLiveAccess.mock.callCount(), 0);
     });
 
     it('rejects a missing or invalid id, or no allowed fields', async () => {
-      const update = mock.method(Setlist, 'findOneAndUpdate', async () => null);
+      const update = mock.method(setlistRepository, 'updateLive', async () => null);
       for (const body of [
         undefined,
         { name: 'Sunday' },
@@ -456,39 +516,34 @@ describe('setlist controllers', () => {
     });
 
     it('rejects invalid songKeys before querying', async () => {
-      const findOne = mock.method(Setlist, 'findOne', () => execResult(null));
-      const update = mock.method(Setlist, 'findOneAndUpdate', async () => null);
+      const findLiveAccess = mockStored(null);
+      const update = mock.method(setlistRepository, 'updateLive', async () => null);
       for (const songKeys of [null, {}, [{ key: 'C', songId: 'bad' }]]) {
         const res = await call(updateSetlist, { body: { id: SETLIST_ID, songKeys }, user: USER });
         assert.equal(res.statusCode, 400);
         assert.equal(res.body, 'Invalid song keys');
       }
-      assert.equal(findOne.mock.callCount(), 0);
+      assert.equal(findLiveAccess.mock.callCount(), 0);
       assert.equal(update.mock.callCount(), 0);
     });
 
     it('returns 404 before any write when no live setlist matches', async () => {
-      const findOne = mock.method(Setlist, 'findOne', () => execResult(null));
-      const update = mock.method(Setlist, 'findOneAndUpdate', async () => ({}));
+      const findLiveAccess = mockStored(null);
+      const update = mock.method(setlistRepository, 'updateLive', async () => ({}));
       const res = await call(updateSetlist, {
         body: { id: SETLIST_ID, name: 'Sunday' },
         user: USER,
       });
-      assert.deepEqual(findOne.mock.calls[0]?.arguments, [
-        { _id: SETLIST_ID, isDeleted: false },
-        'createdBy groupIds songs',
-      ]);
+      assert.deepEqual(findLiveAccess.mock.calls[0]?.arguments, [SETLIST_ID]);
       assert.equal(res.statusCode, 404);
       assert.equal(res.body, 'Setlist not found');
       assert.equal(update.mock.callCount(), 0);
     });
 
     it('forbids a caller who is not the creator, an owner, or a folder member', async () => {
-      mock.method(Setlist, 'findOne', () =>
-        execResult(storedSetlist({ createdBy: OTHER_USER_ID, groupIds: [OTHER_GROUP_ID] }))
-      );
+      mockStored(storedSetlist({ createdBy: OTHER_USER_ID, groupIds: [OTHER_GROUP_ID] }));
       mockOwnership({ groupIds: [entry(GROUP_ID)], setlistIds: [entry(OTHER_SETLIST_ID)] });
-      const update = mock.method(Setlist, 'findOneAndUpdate', async () => ({}));
+      const update = mock.method(setlistRepository, 'updateLive', async () => ({}));
       const res = await call(updateSetlist, {
         body: { id: SETLIST_ID, name: 'Sunday' },
         user: USER,
@@ -499,7 +554,7 @@ describe('setlist controllers', () => {
     });
 
     it('forbids a non-admin on a legacy setlist with no createdBy or shared access', async () => {
-      mock.method(Setlist, 'findOne', () => execResult(storedSetlist({})));
+      mockStored(storedSetlist({}));
       mockOwnership(null);
       const res = await call(updateSetlist, {
         body: { id: SETLIST_ID, name: 'Sunday' },
@@ -509,40 +564,34 @@ describe('setlist controllers', () => {
     });
 
     it('allows the creator, an owner, a folder member, and an admin', async () => {
-      const cases: [TokenUser, Record<string, unknown>, unknown][] = [
-        [USER, { createdBy: new Types.ObjectId(USER.id) }, null],
-        [USER, { createdBy: OTHER_USER_ID }, { setlistIds: [entry(SETLIST_ID)] }],
+      const cases: [TokenUser, Partial<SetlistAccess>, CallerAccess | null][] = [
+        [USER, { createdBy: USER.id }, null],
+        [USER, { createdBy: OTHER_USER_ID }, { groupIds: [], setlistIds: [entry(SETLIST_ID)] }],
         [
           USER,
-          { createdBy: OTHER_USER_ID, groupIds: [new Types.ObjectId(GROUP_ID)] },
-          { groupIds: [entry(GROUP_ID)] },
+          { createdBy: OTHER_USER_ID, groupIds: [GROUP_ID] },
+          { groupIds: [entry(GROUP_ID)], setlistIds: [] },
         ],
         [ADMIN, {}, null],
       ];
       for (const [user, stored, ownership] of cases) {
-        mock.method(Setlist, 'findOne', () => execResult(storedSetlist(stored)));
+        mockStored(storedSetlist(stored));
         mockOwnership(ownership);
         const updated = { _id: SETLIST_ID, name: 'Sunday' };
-        const update = mock.method(Setlist, 'findOneAndUpdate', async () => updated);
+        const update = mock.method(setlistRepository, 'updateLive', async () => updated);
         const res = await call(updateSetlist, { body: { id: SETLIST_ID, name: 'Sunday' }, user });
         assert.equal(res.statusCode, 200, JSON.stringify(stored));
         assert.equal(res.body, updated);
-        assert.deepEqual(update.mock.calls[0]?.arguments, [
-          { _id: SETLIST_ID, isDeleted: false },
-          { $set: { name: 'Sunday' } },
-          { new: true, runValidators: true },
-        ]);
+        assert.deepEqual(update.mock.calls[0]?.arguments, [SETLIST_ID, { name: 'Sunday' }]);
         mock.restoreAll();
       }
     });
 
     it('filters songKeys against the songs in the body', async () => {
-      mock.method(Setlist, 'findOne', () =>
-        execResult(storedSetlist({ createdBy: USER.id, songs: [new Types.ObjectId(SONG_C)] }))
-      );
+      mockStored(storedSetlist({ createdBy: USER.id, songs: [SONG_C] }));
       mockOwnership(null);
       const setlist = { _id: SETLIST_ID };
-      const update = mock.method(Setlist, 'findOneAndUpdate', async () => setlist);
+      const update = mock.method(setlistRepository, 'updateLive', async () => setlist);
       const res = await call(updateSetlist, {
         body: {
           createdBy: 'x',
@@ -556,20 +605,17 @@ describe('setlist controllers', () => {
         user: USER,
       });
       assert.deepEqual(update.mock.calls[0]?.arguments, [
-        { _id: SETLIST_ID, isDeleted: false },
-        { $set: { songKeys: [{ key: 'A', songId: SONG_A }], songs: [SONG_A] } },
-        { new: true, runValidators: true },
+        SETLIST_ID,
+        { songKeys: [{ key: 'A', songId: SONG_A }], songs: [SONG_A] },
       ]);
       assert.equal(res.statusCode, 200);
       assert.equal(res.body, setlist);
     });
 
     it('filters songKeys against the stored songs when songs is not sent', async () => {
-      mock.method(Setlist, 'findOne', () =>
-        execResult(storedSetlist({ createdBy: USER.id, songs: [new Types.ObjectId(SONG_B)] }))
-      );
+      mockStored(storedSetlist({ createdBy: USER.id, songs: [SONG_B] }));
       mockOwnership(null);
-      const update = mock.method(Setlist, 'findOneAndUpdate', async () => ({}));
+      const update = mock.method(setlistRepository, 'updateLive', async () => ({}));
       await call(updateSetlist, {
         body: {
           id: SETLIST_ID,
@@ -581,14 +627,43 @@ describe('setlist controllers', () => {
         user: USER,
       });
       assert.deepEqual(update.mock.calls[0]?.arguments[1], {
-        $set: { songKeys: [{ key: 'Bb', songId: SONG_B }] },
+        songKeys: [{ key: 'Bb', songId: SONG_B }],
       });
     });
 
-    it('returns 404 when the setlist disappears before the write', async () => {
-      mock.method(Setlist, 'findOne', () => execResult(storedSetlist({ createdBy: USER.id })));
+    it('links new folders the caller can edit and keeps folders the caller cannot edit', async () => {
+      mockStored(storedSetlist({ createdBy: USER.id, groupIds: [OTHER_GROUP_ID] }));
+      mockOwnership({ groupIds: [entry(GROUP_ID)], setlistIds: [] });
+      mockFolders(folder(GROUP_ID, OTHER_USER_ID), folder(OTHER_GROUP_ID, OTHER_USER_ID));
+      const update = mock.method(setlistRepository, 'updateLive', async () => ({}));
+      const res = await call(updateSetlist, {
+        body: { groupIds: [GROUP_ID.toUpperCase()], id: SETLIST_ID },
+        user: USER,
+      });
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(update.mock.calls[0]?.arguments[1], {
+        groupIds: [GROUP_ID, OTHER_GROUP_ID],
+      });
+    });
+
+    it('forbids linking a folder the caller cannot edit', async () => {
+      mockStored(storedSetlist({ createdBy: USER.id }));
       mockOwnership(null);
-      mock.method(Setlist, 'findOneAndUpdate', async () => null);
+      mockFolders(folder(GROUP_ID, OTHER_USER_ID));
+      const update = mock.method(setlistRepository, 'updateLive', async () => ({}));
+      const res = await call(updateSetlist, {
+        body: { groupIds: [GROUP_ID], id: SETLIST_ID },
+        user: USER,
+      });
+      assert.equal(res.statusCode, 403);
+      assert.deepEqual(res.body, FORBIDDEN);
+      assert.equal(update.mock.callCount(), 0);
+    });
+
+    it('returns 404 when the setlist disappears before the write', async () => {
+      mockStored(storedSetlist({ createdBy: USER.id }));
+      mockOwnership(null);
+      mock.method(setlistRepository, 'updateLive', async () => null);
       const res = await call(updateSetlist, {
         body: { id: SETLIST_ID, name: 'Sunday' },
         user: USER,
@@ -605,18 +680,18 @@ describe('setlist controllers', () => {
     });
 
     it('rejects bodies without a valid id', async () => {
-      const findOne = mock.method(Setlist, 'findOne', () => execResult(null));
+      const findLiveAccess = mockStored(null);
       for (const body of [undefined, {}, { params: null }, { params: { id: 'bad' } }]) {
         const res = await call(deleteSetlist, { body, user: USER });
         assert.equal(res.statusCode, 400, JSON.stringify(body));
         assert.equal(res.body, 'Missing required fields');
       }
-      assert.equal(findOne.mock.callCount(), 0);
+      assert.equal(findLiveAccess.mock.callCount(), 0);
     });
 
     it('uses whichever of params.id and id is a valid id, preferring params.id', async () => {
-      mock.method(Setlist, 'findOne', () => execResult(storedSetlist({ createdBy: USER.id })));
-      const updateOne = mock.method(Setlist, 'updateOne', async () => ({ matchedCount: 1 }));
+      mockStored(storedSetlist({ createdBy: USER.id }));
+      const softDelete = mock.method(setlistRepository, 'softDelete', async () => true);
       const responses = [];
       for (const body of [
         { id: OTHER_SETLIST_ID, params: { id: SETLIST_ID } },
@@ -625,16 +700,10 @@ describe('setlist controllers', () => {
       ]) {
         responses.push(await call(deleteSetlist, { body, user: USER }));
       }
-      assert.deepEqual(updateOne.mock.calls[0]?.arguments, [
-        { _id: SETLIST_ID, isDeleted: false },
-        { $set: { isDeleted: true } },
-      ]);
-      for (const index of [1, 2]) {
-        assert.deepEqual(updateOne.mock.calls[index]?.arguments[0], {
-          _id: OTHER_SETLIST_ID,
-          isDeleted: false,
-        });
-      }
+      assert.deepEqual(
+        softDelete.mock.calls.map((c) => c.arguments[0]),
+        [SETLIST_ID, OTHER_SETLIST_ID, OTHER_SETLIST_ID]
+      );
       for (const res of responses) {
         assert.equal(res.statusCode, 200);
         assert.equal(res.body, 'Setlist deleted');
@@ -642,42 +711,42 @@ describe('setlist controllers', () => {
     });
 
     it('returns 404 when no live setlist matches', async () => {
-      mock.method(Setlist, 'findOne', () => execResult(null));
-      const updateOne = mock.method(Setlist, 'updateOne', async () => ({ matchedCount: 1 }));
+      mockStored(null);
+      const softDelete = mock.method(setlistRepository, 'softDelete', async () => true);
       const res = await call(deleteSetlist, { body: { id: SETLIST_ID }, user: USER });
       assert.equal(res.statusCode, 404);
       assert.equal(res.body, 'Setlist not found');
-      assert.equal(updateOne.mock.callCount(), 0);
+      assert.equal(softDelete.mock.callCount(), 0);
     });
 
     it('forbids owners, folder members, and non-admins on legacy setlists', async () => {
-      const ownershipFindOne = mockOwnership({
+      const findCallerAccess = mockOwnership({
         groupIds: [entry(GROUP_ID)],
         setlistIds: [entry(SETLIST_ID)],
       });
-      const updateOne = mock.method(Setlist, 'updateOne', async () => ({ matchedCount: 1 }));
+      const softDelete = mock.method(setlistRepository, 'softDelete', async () => true);
       for (const stored of [
         { createdBy: OTHER_USER_ID, groupIds: [GROUP_ID] },
         { groupIds: [GROUP_ID] },
       ]) {
-        mock.method(Setlist, 'findOne', () => execResult(storedSetlist(stored)));
+        mockStored(storedSetlist(stored));
         const res = await call(deleteSetlist, { body: { id: SETLIST_ID }, user: USER });
         assert.equal(res.statusCode, 403, JSON.stringify(stored));
         assert.deepEqual(res.body, FORBIDDEN);
       }
-      assert.equal(updateOne.mock.callCount(), 0);
-      assert.equal(ownershipFindOne.mock.callCount(), 0);
+      assert.equal(softDelete.mock.callCount(), 0);
+      assert.equal(findCallerAccess.mock.callCount(), 0);
     });
 
     it('lets the creator and an admin delete, including an admin on a legacy setlist', async () => {
-      const cases: [TokenUser, Record<string, unknown>][] = [
-        [USER, { createdBy: new Types.ObjectId(USER.id) }],
+      const cases: [TokenUser, Partial<SetlistAccess>][] = [
+        [USER, { createdBy: USER.id }],
         [ADMIN, { createdBy: OTHER_USER_ID }],
         [ADMIN, {}],
       ];
       for (const [user, stored] of cases) {
-        mock.method(Setlist, 'findOne', () => execResult(storedSetlist(stored)));
-        mock.method(Setlist, 'updateOne', async () => ({ matchedCount: 1 }));
+        mockStored(storedSetlist(stored));
+        mock.method(setlistRepository, 'softDelete', async () => true);
         const res = await call(deleteSetlist, { body: { id: SETLIST_ID }, user });
         assert.equal(res.statusCode, 200, JSON.stringify(stored));
         mock.restoreAll();

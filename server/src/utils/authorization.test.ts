@@ -1,12 +1,13 @@
-import { Types } from 'mongoose';
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
+import { setlistRepository } from '../db/repositories/setlist.repository';
 import {
   CallerOwnership,
   canDeleteGroup,
   canDeleteSetlist,
   canEditGroup,
   canEditSetlist,
+  canEditSetlists,
   ownedEntryIds,
 } from './authorization';
 import { TokenUser } from './verify-jwt';
@@ -28,13 +29,13 @@ const owner = (...setlistIds: string[]): CallerOwnership => ({
   setlistIds: setlistIds.map(entry),
 });
 
-const setlist = (fields: Record<string, unknown> = {}) => ({
-  _id: new Types.ObjectId(SETLIST_ID),
-  groupIds: [new Types.ObjectId(GROUP_ID)],
+const setlist = (fields: { createdBy?: string | null; groupIds?: string[] } = {}) => ({
+  _id: SETLIST_ID,
+  groupIds: [GROUP_ID],
   ...fields,
 });
-const group = (fields: Record<string, unknown> = {}) => ({
-  _id: new Types.ObjectId(GROUP_ID),
+const group = (fields: { createdBy?: string | null } = {}) => ({
+  _id: GROUP_ID,
   ...fields,
 });
 
@@ -53,10 +54,7 @@ describe('authorization', () => {
   describe('canEditSetlist', () => {
     it('allows an admin, the creator, an owner, and a member of a containing folder', () => {
       assert.equal(canEditSetlist(ADMIN, setlist({ createdBy: OTHER_USER_ID }), null), true);
-      assert.equal(
-        canEditSetlist(USER, setlist({ createdBy: new Types.ObjectId(USER.id) }), null),
-        true
-      );
+      assert.equal(canEditSetlist(USER, setlist({ createdBy: USER.id }), null), true);
       assert.equal(
         canEditSetlist(USER, setlist({ createdBy: OTHER_USER_ID }), owner(SETLIST_ID)),
         true
@@ -90,10 +88,7 @@ describe('authorization', () => {
   describe('canEditGroup', () => {
     it('allows an admin, the creator, or a member', () => {
       assert.equal(canEditGroup(ADMIN, group({ createdBy: OTHER_USER_ID }), null), true);
-      assert.equal(
-        canEditGroup(USER, group({ createdBy: new Types.ObjectId(USER.id) }), null),
-        true
-      );
+      assert.equal(canEditGroup(USER, group({ createdBy: USER.id }), null), true);
       assert.equal(canEditGroup(USER, group({ createdBy: OTHER_USER_ID }), member(GROUP_ID)), true);
       assert.equal(canEditGroup(USER, group(), member(GROUP_ID)), true);
     });
@@ -122,6 +117,29 @@ describe('authorization', () => {
       assert.equal(canDeleteGroup(USER, group({ createdBy: null }), member(GROUP_ID)), true);
       assert.equal(canDeleteGroup(USER, group(), member(OTHER_GROUP_ID)), false);
       assert.equal(canDeleteGroup(USER, group(), null), false);
+    });
+  });
+
+  describe('canEditSetlists', () => {
+    afterEach(() => {
+      mock.restoreAll();
+    });
+
+    it('skips the lookup for an empty list', async () => {
+      const lookup = mock.method(setlistRepository, 'findLiveAccessByIds', async () => []);
+      assert.equal(await canEditSetlists(USER, [], null), true);
+      assert.equal(lookup.mock.callCount(), 0);
+    });
+
+    it('requires every distinct setlist to exist and be editable', async () => {
+      const editable = { _id: SETLIST_ID, createdBy: USER.id, groupIds: [], songs: [] };
+      const lookup = mock.method(setlistRepository, 'findLiveAccessByIds', async () => [editable]);
+      assert.equal(await canEditSetlists(USER, [SETLIST_ID, SETLIST_ID.toUpperCase()], null), true);
+      assert.deepEqual(lookup.mock.calls[0]?.arguments, [[SETLIST_ID]]);
+      assert.equal(await canEditSetlists(USER, [SETLIST_ID, OTHER_GROUP_ID], null), false);
+      lookup.mock.mockImplementation(async () => [{ ...editable, createdBy: OTHER_USER_ID }]);
+      assert.equal(await canEditSetlists(USER, [SETLIST_ID], null), false);
+      assert.equal(await canEditSetlists(USER, [SETLIST_ID], owner(SETLIST_ID)), true);
     });
   });
 });
